@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Make X Great Again",
+  "version": "0.1.0",
+  "description": "在 X 时间线上快速关注、取关或标记不感兴趣。",
+  "minimum_chrome_version": "111",
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*"],
+      "js": ["timeline.js"],
+      "css": ["timeline.css"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}
