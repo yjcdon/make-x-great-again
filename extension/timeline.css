@@ -1,5 +1,5 @@
 .mxga-follow,
-.mxga-feedback {
+.mxga-icon {
     appearance: none;
     box-sizing: border-box;
     border: 0;
@@ -9,9 +9,15 @@
     cursor: pointer;
 }
 
-.mxga-follow {
-    align-self: flex-start;
+.mxga-author-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 2px 0 3px;
+}
+
+.mxga-follow {
+    flex-shrink: 0;
     padding: 2px 7px;
     border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
     border-radius: 999px;
@@ -20,7 +26,13 @@
     line-height: 16px;
 }
 
-.mxga-feedback {
+.mxga-counts {
+    color: color-mix(in srgb, currentColor 72%, transparent);
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.mxga-icon {
     display: inline-grid;
     width: 34px;
     height: 34px;
@@ -30,7 +42,7 @@
     border-radius: 50%;
 }
 
-.mxga-feedback svg {
+.mxga-icon svg {
     width: 18px;
     height: 18px;
     fill: currentColor;
@@ -38,12 +50,12 @@
 }
 
 .mxga-follow:hover,
-.mxga-feedback:hover {
+.mxga-icon:hover {
     background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .mxga-follow:focus-visible,
-.mxga-feedback:focus-visible {
+.mxga-icon:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: 2px;
 }

@@ -8,13 +8,19 @@
     const dropdownSelector = '[role="menu"] [data-testid="Dropdown"]';
     const timelinePath = /^\/i\/api\/graphql\/[^/]+\/Home(?:Latest)?Timeline$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
-    const followLabel = /^(关注|關注|跟隨|Follow)\s+@([\w]+)$/i;
-    const unfollowLabel = /^(取消关注|取消關注|取消跟隨|Unfollow)\s+@([\w]+)$/i;
-    const feedbackLabel = /^(对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|Show less often)$/i;
+    const menuLabels = {
+        follow: /^(?:关注|關注|跟隨|Follow)\s+@([\w]+)$/i,
+        unfollow: /^(?:取消关注|取消關注|取消跟隨|Unfollow)\s+@([\w]+)$/i,
+        block: /^(?:屏蔽|封鎖|Block)\s+@([\w]+)$/i,
+        feedback: /^(?:对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|Show less often)$/i
+    };
     const feedbackIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z"/><path fill-rule="evenodd" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z"/></svg>';
     const relationships = new Map();
     const accountsById = new Map();
+    const hoverCardCounts = new Map();
     const unavailableFeedback = new Set();
+    const blockIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" stroke="currentColor" stroke-width="2"/></svg>';
+    const countFormat = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
     const cards = new WeakMap();
     let relationshipRequest = 0;
     let refreshFrame = 0;
@@ -30,12 +36,19 @@
         const handle = name.toLowerCase();
         accountsById.set(id, handle);
         // 首页快照可能还没同步已成功的操作，当前页面以操作响应为准。
-        if (relationships.get(handle)?.confirmedRequest) return;
+        const previous = relationships.get(handle);
+        const followingCount = user.relationship_counts?.following
+            ?? user.legacy?.friends_count ?? user.friends_count ?? previous?.followingCount;
+        const followersCount = user.relationship_counts?.followers
+            ?? user.legacy?.followers_count ?? user.followers_count ?? previous?.followersCount;
         relationships.set(handle, {
             following,
             requested: requested === true,
             protected: (user.privacy?.protected ?? user.legacy?.protected ?? user.protected) === true,
-            confirmedRequest: 0
+            confirmedRequest: 0,
+            ...(previous?.confirmedRequest ? previous : {}),
+            followingCount,
+            followersCount
         });
     }
 
@@ -67,6 +80,7 @@
             const requested = request.following && data.follow_request_sent === true;
             if (request.following && protectedAccount && !requested && data.following !== true) return;
             relationships.set(handle, {
+                ...previous,
                 following: request.following && !requested,
                 requested,
                 protected: protectedAccount,
@@ -196,10 +210,8 @@
 
     function matchingItem(menu, action, handle) {
         const items = [...menu.querySelectorAll('[role="menuitem"]')].filter((item) => {
-            const label = item.textContent.trim();
-            if (action === 'feedback') return feedbackLabel.test(label);
-            const match = (action === 'follow' ? followLabel : unfollowLabel).exec(label);
-            return match?.[2].toLowerCase() === handle;
+            const match = menuLabels[action].exec(item.textContent.trim());
+            return action === 'feedback' ? Boolean(match) : match?.[1].toLowerCase() === handle;
         });
         return items.length === 1 ? items[0] : null;
     }
@@ -253,6 +265,12 @@
                 } else if (action === 'feedback') {
                     unavailableFeedback.add(post.id);
                     scheduleRefresh();
+                } else if (action === 'block') {
+                    const entry = cards.get(article);
+                    if (entry?.block === button) {
+                        entry.blockUnavailable = true;
+                        button.remove();
+                    }
                 }
             });
         } finally {
@@ -264,28 +282,79 @@
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'mxga-' + kind;
-        if (kind === 'feedback') {
-            button.setAttribute('aria-label', '对此帖子不感兴趣');
-            button.innerHTML = feedbackIcon;
-            post.caret.before(button);
-        } else {
-            post.author.after(button);
+        if (kind !== 'follow') {
+            button.classList.add('mxga-icon');
+            button.setAttribute('aria-label', kind === 'block' ? '屏蔽 @' + post.handle : '对此帖子不感兴趣');
+            button.innerHTML = kind === 'block' ? blockIcon : feedbackIcon;
         }
         button.addEventListener('click', (event) => {
-            void activate(article, post, kind === 'feedback' ? kind : button.dataset.action, button, event);
+            void activate(article, post, kind === 'follow' ? button.dataset.action : kind, button, event);
         });
         return button;
     }
 
+    function readHoverCardCounts() {
+        const links = document.querySelectorAll('[data-testid="HoverCard"] a[href]');
+        for (const link of links) {
+            if (link.origin !== location.origin) continue;
+            const profile = /^\/([\w]+)\/(following|followers|verified_followers)\/?$/.exec(link.pathname);
+            if (!profile) continue;
+
+            const text = link.querySelector(':scope > span:first-child')?.textContent.trim();
+            const count = /^(\d[\d,]*(?:\.\d+)?)\s*([KMBT万萬亿億])?$/i.exec(text ?? '');
+            if (!count) continue;
+            const units = { K: 1e3, M: 1e6, B: 1e9, T: 1e12, 万: 1e4, 萬: 1e4, 亿: 1e8, 億: 1e8 };
+            const value = Number(count[1].replaceAll(',', '')) * (units[count[2]?.toUpperCase()] ?? 1);
+            const handle = profile[1].toLowerCase();
+            const counts = hoverCardCounts.get(handle) ?? {};
+            counts[profile[2] === 'following' ? 'following' : 'followers'] = countFormat.format(value);
+            hoverCardCounts.set(handle, counts);
+        }
+    }
+
+    function updateAuthorActions(article, post, entry, state) {
+        if (!state || state.requested) {
+            entry.authorActions?.remove();
+            return;
+        }
+        if (!entry.authorActions?.isConnected) {
+            entry.authorActions = document.createElement('div');
+            entry.authorActions.className = 'mxga-author-actions';
+            entry.follow = addButton(article, post, 'follow');
+            entry.counts = document.createElement('span');
+            entry.counts.className = 'mxga-counts';
+            entry.counts.lang = 'zh-CN';
+            entry.authorActions.append(entry.follow, entry.counts);
+            post.author.after(entry.authorActions);
+        }
+        const label = state.following ? '取关' : '关注';
+        if (entry.follow.textContent !== label) entry.follow.textContent = label;
+        entry.follow.dataset.action = state.following ? 'unfollow' : 'follow';
+
+        const cardCounts = hoverCardCounts.get(post.handle);
+        const counts = [
+            [cardCounts?.following, state.followingCount, '正在关注'],
+            [cardCounts?.followers, state.followersCount, '关注者']
+        ].flatMap(([cardCount, count, label]) => {
+            if (cardCount) return [cardCount + ' ' + label];
+            if (Number.isSafeInteger(count) && count >= 0) return [countFormat.format(count) + ' ' + label];
+            return [];
+        }).join(' / ');
+        if (entry.counts.textContent !== counts) entry.counts.textContent = counts;
+        entry.counts.hidden = !counts;
+    }
+
     function refreshCards() {
         const onHome = location.pathname === '/home';
+        if (onHome) readHoverCardCounts();
         const showFeedback = onHome && forYouSelected();
         for (const article of document.querySelectorAll(tweetSelector)) {
             const post = onHome ? readPost(article) : null;
             let entry = cards.get(article);
             if (entry && (!post || entry.id !== post.id || entry.author !== post.author || entry.caret !== post.caret)) {
-                entry.follow?.remove();
+                entry.authorActions?.remove();
                 entry.feedback?.remove();
+                entry.block?.remove();
                 cards.delete(article);
                 entry = null;
             }
@@ -294,19 +363,19 @@
                 entry = post;
                 cards.set(article, entry);
             }
-            const state = relationships.get(post.handle);
-            if (state && !state.requested) {
-                if (!entry.follow?.isConnected) entry.follow = addButton(article, post, 'follow');
-                const label = state.following ? '取关' : '关注';
-                if (entry.follow.textContent !== label) entry.follow.textContent = label;
-                entry.follow.dataset.action = state.following ? 'unfollow' : 'follow';
-            } else {
-                entry.follow?.remove();
-            }
+            updateAuthorActions(article, post, entry, relationships.get(post.handle));
             if (showFeedback && !unavailableFeedback.has(post.id)) {
-                if (!entry.feedback?.isConnected) entry.feedback = addButton(article, post, 'feedback');
+                if (!entry.feedback?.isConnected) {
+                    entry.feedback = addButton(article, post, 'feedback');
+                    post.caret.before(entry.feedback);
+                }
             } else {
                 entry.feedback?.remove();
+            }
+            if (!entry.blockUnavailable && !entry.block?.isConnected) {
+                entry.block = addButton(article, post, 'block');
+                const nextButton = entry.feedback?.isConnected ? entry.feedback : post.caret;
+                nextButton.before(entry.block);
             }
         }
     }
@@ -321,7 +390,8 @@
 
     function start() {
         new MutationObserver(scheduleRefresh).observe(document.body, {
-            childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected', 'href']
+            childList: true, subtree: true, characterData: true,
+            attributes: true, attributeFilter: ['aria-selected', 'href']
         });
         window.navigation?.addEventListener('navigatesuccess', scheduleRefresh);
         scheduleRefresh();
