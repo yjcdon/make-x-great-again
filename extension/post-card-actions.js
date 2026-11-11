@@ -6,9 +6,10 @@
     const caretSelector = 'button[data-testid="caret"]';
     const expandedCaretSelector = tweetSelector + ' ' + caretSelector + '[aria-expanded="true"]';
     const dropdownSelector = '[role="menu"] [data-testid="Dropdown"]';
-    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2)$/;
+    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2|NotificationsTimeline)$/;
     const postPath = /^\/([\w]+)\/status\/(\d+)$/;
     const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
+    const notificationsPath = /^\/notifications(?:\/(?:verified|mentions))?\/?$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
     const menuLabels = {
         follow: /^(?:关注|關注|跟隨|Follow)\s+@([\w]+)$/i,
@@ -67,7 +68,8 @@
         if (!request.number) {
             const posts = data?.data;
             rememberPostAuthors(posts?.home ?? posts?.threaded_conversation_with_injections_v2
-                ?? posts?.threaded_conversation_with_injections);
+                ?? posts?.threaded_conversation_with_injections
+                ?? posts?.viewer_v2?.user_results?.result?.notification_timeline?.timeline);
         } else {
             if (!data || typeof data !== 'object' || Array.isArray(data) || data.error || data.errors?.length) return;
             const id = data.id_str ?? data.rest_id ?? request.userId;
@@ -90,7 +92,7 @@
         scheduleRefresh();
     }
 
-    // 只读取 X 已经发起的首页、详情和关注请求。
+    // 只读取 X 已经发起的首页、详情、通知和关注请求。
     function observedRequest(url, method) {
         try {
             const target = new URL(url, location.href);
@@ -257,7 +259,7 @@
 
         const page = location.pathname;
         const onHome = page === '/home';
-        if (!onHome && !discussionPath.test(page)) return;
+        if (!onHome && !discussionPath.test(page) && !notificationsPath.test(page)) return;
         if (action === 'feedback' && !onHome) return;
         const tab = onHome ? selectedHomeTab() : null;
         const canAct = () => location.pathname === page && (!onHome || selectedHomeTab() === tab)
@@ -336,9 +338,12 @@
         entry.counts.hidden = !counts;
     }
 
+    /** 为首页、帖子回复和通知中的帖子卡片同步作者操作。 */
     function refreshCards() {
-        const onHome = location.pathname === '/home';
-        const discussionId = discussionPath.exec(location.pathname)?.[1];
+        const page = location.pathname;
+        const onHome = page === '/home';
+        const onNotifications = notificationsPath.test(page);
+        const discussionId = discussionPath.exec(page)?.[1];
         const tab = onHome ? selectedHomeTab() : null;
         const articles = [...document.querySelectorAll(tweetSelector)];
         const focalIndex = discussionId ? articles.findIndex(article =>
@@ -347,7 +352,7 @@
         ) : -1;
         for (const [index, article] of articles.entries()) {
             const isReply = discussionId && index > focalIndex;
-            const post = onHome || isReply ? readPost(article) : null;
+            const post = onHome || onNotifications || isReply ? readPost(article) : null;
             let entry = cards.get(article);
             if (entry && (!post || entry.id !== post.id || entry.author !== post.author
                 || entry.caret !== post.caret || entry.header !== post.header

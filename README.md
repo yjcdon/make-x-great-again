@@ -1,6 +1,6 @@
 # Make X Great Again
 
-Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在首页时间线和帖子评论区，可以直接查看作者的关注数和关注者数，以及快速关注、取关或屏蔽账号。首页还提供「不感兴趣」快捷入口。
+Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在首页时间线、帖子评论区和通知页的帖子卡片上，可以直接查看作者的关注数和关注者数，以及快速关注、取关或屏蔽账号。首页还提供「不感兴趣」快捷入口。
 
 [下载最新版扩展](https://github.com/yjcdon/make-x-great-again/releases/latest)
 
@@ -13,11 +13,11 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 
 ## 安装
 
-需要 Chrome 111 或以上版本。扩展作用于 `x.com` 的首页时间线和帖子评论区。
+需要 Chrome 111 或以上版本。
 
 1. 在最新版下载页的 **Assets** 中下载 `make-x-great-again-v*.zip` 并解压。
 2. 打开 `chrome://extensions`，开启「开发者模式」。
 3. 点击「加载已解压的扩展程序」，选择解压后包含 `manifest.json` 的文件夹。
-4. 登录 X，刷新首页或已打开的帖子详情页。
+4. 登录 X，刷新已打开的首页、帖子详情页或通知页。
 
 从源码安装时，在第 3 步选择仓库里的 [`extension/`](extension/) 文件夹。
