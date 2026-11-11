@@ -17,10 +17,8 @@
     const feedbackIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z"/><path fill-rule="evenodd" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z"/></svg>';
     const relationships = new Map();
     const accountsById = new Map();
-    const hoverCardCounts = new Map();
-    const unavailableFeedback = new Set();
+    const countFormat = new Intl.NumberFormat('en');
     const blockIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" stroke="currentColor" stroke-width="2"/></svg>';
-    const countFormat = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
     const cards = new WeakMap();
     let relationshipRequest = 0;
     let refreshFrame = 0;
@@ -35,20 +33,18 @@
 
         const handle = name.toLowerCase();
         accountsById.set(id, handle);
-        // 首页快照可能还没同步已成功的操作，当前页面以操作响应为准。
         const previous = relationships.get(handle);
-        const followingCount = user.relationship_counts?.following
-            ?? user.legacy?.friends_count ?? user.friends_count ?? previous?.followingCount;
-        const followersCount = user.relationship_counts?.followers
-            ?? user.legacy?.followers_count ?? user.followers_count ?? previous?.followersCount;
+        // 首页快照仍可补充计数，关注状态以成功的操作响应为准。
         relationships.set(handle, {
             following,
             requested: requested === true,
             protected: (user.privacy?.protected ?? user.legacy?.protected ?? user.protected) === true,
             confirmedRequest: 0,
             ...(previous?.confirmedRequest ? previous : {}),
-            followingCount,
-            followersCount
+            followingCount: user.relationship_counts?.following
+                ?? user.legacy?.friends_count ?? user.friends_count ?? previous?.followingCount,
+            followersCount: user.relationship_counts?.followers
+                ?? user.legacy?.followers_count ?? user.followers_count ?? previous?.followersCount
         });
     }
 
@@ -165,12 +161,14 @@
         const match = /^\/([\w]+)\/status\/(\d+)$/.exec(link?.pathname ?? '');
         const caret = article.querySelector(caretSelector);
         if (!match || !caret || !author.parentElement || link.origin !== location.origin) return null;
-        return { author, handle: match[1].toLowerCase(), id: match[2], caret };
+        let header = author.parentElement;
+        while (header !== article && !header.contains(caret)) header = header.parentElement;
+        if (header === article) return null;
+        return { author, handle: match[1].toLowerCase(), id: match[2], caret, header };
     }
 
-    function forYouSelected() {
-        return [...document.querySelectorAll('[role="tab"][aria-selected="true"]')]
-            .some(tab => /^(For you|为你推荐|為你推薦|為你推介)$/i.test(tab.textContent.trim()));
+    function selectedHomeTab() {
+        return document.querySelector('[role="tab"][aria-selected="true"]');
     }
 
     function ownsPost(article, post) {
@@ -253,8 +251,8 @@
         event.stopPropagation();
         if (!event.isTrusted || button.getAttribute('aria-disabled') === 'true') return;
 
-        const canAct = () => location.pathname === '/home' && ownsPost(article, post)
-            && (action !== 'feedback' || forYouSelected());
+        const tab = selectedHomeTab();
+        const canAct = () => location.pathname === '/home' && selectedHomeTab() === tab && ownsPost(article, post);
         button.setAttribute('aria-disabled', 'true');
         try {
             await withShortcutMenu(article, post, canAct, async (menu) => {
@@ -262,14 +260,12 @@
                 if (item) {
                     item.click();
                     await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
-                } else if (action === 'feedback') {
-                    unavailableFeedback.add(post.id);
-                    scheduleRefresh();
-                } else if (action === 'block') {
+                } else if (action === 'feedback' || action === 'block') {
                     const entry = cards.get(article);
-                    if (entry?.block === button) {
-                        entry.blockUnavailable = true;
-                        button.remove();
+                    if (entry?.[action] === button) {
+                        if (action === 'feedback') entry.feedbackUnavailableOn = tab;
+                        else entry.blockUnavailable = true;
+                        scheduleRefresh();
                     }
                 }
             });
@@ -293,90 +289,64 @@
         return button;
     }
 
-    function readHoverCardCounts() {
-        const links = document.querySelectorAll('[data-testid="HoverCard"] a[href]');
-        for (const link of links) {
-            if (link.origin !== location.origin) continue;
-            const profile = /^\/([\w]+)\/(following|followers|verified_followers)\/?$/.exec(link.pathname);
-            if (!profile) continue;
-
-            const text = link.querySelector(':scope > span:first-child')?.textContent.trim();
-            const count = /^(\d[\d,]*(?:\.\d+)?)\s*([KMBT万萬亿億])?$/i.exec(text ?? '');
-            if (!count) continue;
-            const units = { K: 1e3, M: 1e6, B: 1e9, T: 1e12, 万: 1e4, 萬: 1e4, 亿: 1e8, 億: 1e8 };
-            const value = Number(count[1].replaceAll(',', '')) * (units[count[2]?.toUpperCase()] ?? 1);
-            const handle = profile[1].toLowerCase();
-            const counts = hoverCardCounts.get(handle) ?? {};
-            counts[profile[2] === 'following' ? 'following' : 'followers'] = countFormat.format(value);
-            hoverCardCounts.set(handle, counts);
-        }
+    function createActionRow(article, post) {
+        const row = document.createElement('div');
+        row.className = 'mxga-action-row';
+        const authorActions = document.createElement('div');
+        authorActions.className = 'mxga-author-actions';
+        const icons = document.createElement('div');
+        icons.className = 'mxga-icons';
+        const follow = addButton(article, post, 'follow');
+        const block = addButton(article, post, 'block');
+        const feedback = addButton(article, post, 'feedback');
+        const counts = document.createElement('span');
+        counts.className = 'mxga-counts';
+        counts.lang = 'zh-CN';
+        authorActions.append(follow, counts);
+        icons.append(block, feedback);
+        row.append(authorActions, icons);
+        post.header.after(row);
+        return { ...post, row, authorActions, follow, block, feedback, counts };
     }
 
-    function updateAuthorActions(article, post, entry, state) {
-        if (!state || state.requested) {
-            entry.authorActions?.remove();
-            return;
-        }
-        if (!entry.authorActions?.isConnected) {
-            entry.authorActions = document.createElement('div');
-            entry.authorActions.className = 'mxga-author-actions';
-            entry.follow = addButton(article, post, 'follow');
-            entry.counts = document.createElement('span');
-            entry.counts.className = 'mxga-counts';
-            entry.counts.lang = 'zh-CN';
-            entry.authorActions.append(entry.follow, entry.counts);
-            post.author.after(entry.authorActions);
-        }
+    function updateAuthorActions(entry, state) {
+        entry.authorActions.hidden = !state || state.requested;
+        if (entry.authorActions.hidden) return;
         const label = state.following ? '取关' : '关注';
         if (entry.follow.textContent !== label) entry.follow.textContent = label;
         entry.follow.dataset.action = state.following ? 'unfollow' : 'follow';
 
-        const cardCounts = hoverCardCounts.get(post.handle);
         const counts = [
-            [cardCounts?.following, state.followingCount, '正在关注'],
-            [cardCounts?.followers, state.followersCount, '关注者']
-        ].flatMap(([cardCount, count, label]) => {
-            if (cardCount) return [cardCount + ' ' + label];
-            if (Number.isSafeInteger(count) && count >= 0) return [countFormat.format(count) + ' ' + label];
-            return [];
-        }).join(' / ');
+            [state.followingCount, '正在关注'],
+            [state.followersCount, '关注者']
+        ].filter(([count]) => Number.isSafeInteger(count) && count >= 0)
+            .map(([count, label]) => countFormat.format(count) + ' ' + label)
+            .join(' / ');
         if (entry.counts.textContent !== counts) entry.counts.textContent = counts;
         entry.counts.hidden = !counts;
     }
 
     function refreshCards() {
         const onHome = location.pathname === '/home';
-        if (onHome) readHoverCardCounts();
-        const showFeedback = onHome && forYouSelected();
+        const tab = onHome ? selectedHomeTab() : null;
         for (const article of document.querySelectorAll(tweetSelector)) {
             const post = onHome ? readPost(article) : null;
             let entry = cards.get(article);
-            if (entry && (!post || entry.id !== post.id || entry.author !== post.author || entry.caret !== post.caret)) {
-                entry.authorActions?.remove();
-                entry.feedback?.remove();
-                entry.block?.remove();
+            if (entry && (!post || entry.id !== post.id || entry.author !== post.author
+                || entry.caret !== post.caret || entry.header !== post.header || !entry.row.isConnected)) {
+                entry.row.remove();
                 cards.delete(article);
                 entry = null;
             }
             if (!post) continue;
             if (!entry) {
-                entry = post;
+                entry = createActionRow(article, post);
                 cards.set(article, entry);
             }
-            updateAuthorActions(article, post, entry, relationships.get(post.handle));
-            if (showFeedback && !unavailableFeedback.has(post.id)) {
-                if (!entry.feedback?.isConnected) {
-                    entry.feedback = addButton(article, post, 'feedback');
-                    post.caret.before(entry.feedback);
-                }
-            } else {
-                entry.feedback?.remove();
-            }
-            if (!entry.blockUnavailable && !entry.block?.isConnected) {
-                entry.block = addButton(article, post, 'block');
-                const nextButton = entry.feedback?.isConnected ? entry.feedback : post.caret;
-                nextButton.before(entry.block);
-            }
+            updateAuthorActions(entry, relationships.get(post.handle));
+            entry.feedback.hidden = entry.feedbackUnavailableOn === tab;
+            entry.block.hidden = Boolean(entry.blockUnavailable);
+            entry.row.hidden = entry.authorActions.hidden && entry.feedback.hidden && entry.block.hidden;
         }
     }
 
@@ -390,7 +360,7 @@
 
     function start() {
         new MutationObserver(scheduleRefresh).observe(document.body, {
-            childList: true, subtree: true, characterData: true,
+            childList: true, subtree: true,
             attributes: true, attributeFilter: ['aria-selected', 'href']
         });
         window.navigation?.addEventListener('navigatesuccess', scheduleRefresh);

@@ -9,11 +9,41 @@
     cursor: pointer;
 }
 
+.mxga-action-row,
 .mxga-author-actions {
     display: flex;
     align-items: center;
+}
+
+.mxga-action-row {
     gap: 8px;
     margin: 2px 0 3px;
+}
+
+.mxga-author-actions {
+    min-width: 0;
+    gap: 8px;
+}
+
+.mxga-icons {
+    display: grid;
+    grid-template-columns: repeat(2, 27.5px);
+    flex-shrink: 0;
+    margin-inline-start: auto;
+    margin-inline-end: -5px;
+}
+
+.mxga-block {
+    grid-area: 1 / 1;
+}
+
+.mxga-feedback {
+    grid-area: 1 / 2;
+}
+
+.mxga-action-row[hidden],
+.mxga-action-row [hidden] {
+    display: none;
 }
 
 .mxga-follow {
@@ -34,9 +64,8 @@
 
 .mxga-icon {
     display: inline-grid;
-    width: 34px;
-    height: 34px;
-    margin: -8px 0;
+    width: 100%;
+    height: 26px;
     place-items: center;
     padding: 0;
     border-radius: 50%;
