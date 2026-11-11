@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Make X Great Again",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 X 时间线上查看作者的关注数，快速关注、取关、屏蔽或标记不感兴趣。",
   "minimum_chrome_version": "111",
   "icons": {

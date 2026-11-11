@@ -6,7 +6,9 @@
     const caretSelector = 'button[data-testid="caret"]';
     const expandedCaretSelector = tweetSelector + ' ' + caretSelector + '[aria-expanded="true"]';
     const dropdownSelector = '[role="menu"] [data-testid="Dropdown"]';
-    const timelinePath = /^\/i\/api\/graphql\/[^/]+\/Home(?:Latest)?Timeline$/;
+    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2)$/;
+    const postPath = /^\/([\w]+)\/status\/(\d+)$/;
+    const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
     const menuLabels = {
         follow: /^(?:关注|關注|跟隨|Follow)\s+@([\w]+)$/i,
@@ -24,17 +26,17 @@
     let refreshFrame = 0;
     let openingMenu = false;
 
-    function rememberTimelineUser(user) {
+    function rememberPostAuthor(user) {
         const id = user.rest_id ?? user.id_str;
-        const name = user?.core?.screen_name ?? user?.screen_name;
-        const requested = user?.relationship_perspectives?.follow_request_sent ?? user?.follow_request_sent;
-        const following = user?.relationship_perspectives?.following ?? user?.following;
+        const name = user.core?.screen_name ?? user.legacy?.screen_name ?? user.screen_name;
+        const requested = user.relationship_perspectives?.follow_request_sent ?? user.legacy?.follow_request_sent ?? user.follow_request_sent;
+        const following = user.relationship_perspectives?.following ?? user.legacy?.following ?? user.following;
         if (typeof id !== 'string' || typeof name !== 'string' || typeof following !== 'boolean') return;
 
         const handle = name.toLowerCase();
         accountsById.set(id, handle);
         const previous = relationships.get(handle);
-        // 首页快照仍可补充计数，关注状态以成功的操作响应为准。
+        // 页面快照仍可补充计数，关注状态以成功的操作响应为准。
         relationships.set(handle, {
             following,
             requested: requested === true,
@@ -48,13 +50,13 @@
         });
     }
 
-    function rememberTimeline(home) {
-        if (!home) return;
-        const nodes = [home];
+    function rememberPostAuthors(posts) {
+        if (!posts) return;
+        const nodes = [posts];
         while (nodes.length) {
             const node = nodes.pop();
             if (!node || typeof node !== 'object') continue;
-            if (node.user_results?.result) rememberTimelineUser(node.user_results.result);
+            if (node.user_results?.result) rememberPostAuthor(node.user_results.result);
             for (const value of Object.values(node)) {
                 if (value && typeof value === 'object') nodes.push(value);
             }
@@ -63,7 +65,9 @@
 
     function rememberResponse(data, request) {
         if (!request.number) {
-            rememberTimeline(data?.data?.home);
+            const posts = data?.data;
+            rememberPostAuthors(posts?.home ?? posts?.threaded_conversation_with_injections_v2
+                ?? posts?.threaded_conversation_with_injections);
         } else {
             if (!data || typeof data !== 'object' || Array.isArray(data) || data.error || data.errors?.length) return;
             const id = data.id_str ?? data.rest_id ?? request.userId;
@@ -86,13 +90,13 @@
         scheduleRefresh();
     }
 
-    // 只读取 X 已经发起的首页和关注请求，不额外发送请求。
+    // 只读取 X 已经发起的首页、详情和关注请求。
     function observedRequest(url, method) {
         try {
             const target = new URL(url, location.href);
             const { pathname } = target;
             if (target.origin !== location.origin) return;
-            if (timelinePath.test(pathname)) return { number: 0 };
+            if (postDataPath.test(pathname)) return { number: 0 };
             if (method.toUpperCase() === 'POST' && relationshipPath.test(pathname)) {
                 return { following: pathname.endsWith('/create.json'), userId: target.searchParams.get('user_id') };
             }
@@ -158,7 +162,7 @@
     function readPost(article) {
         const author = article.querySelector(authorSelector);
         const link = author?.querySelector('a:has(time)');
-        const match = /^\/([\w]+)\/status\/(\d+)$/.exec(link?.pathname ?? '');
+        const match = postPath.exec(link?.pathname ?? '');
         const caret = article.querySelector(caretSelector);
         if (!match || !caret || !author.parentElement || link.origin !== location.origin) return null;
         let header = author.parentElement;
@@ -251,8 +255,13 @@
         event.stopPropagation();
         if (!event.isTrusted || button.getAttribute('aria-disabled') === 'true') return;
 
-        const tab = selectedHomeTab();
-        const canAct = () => location.pathname === '/home' && selectedHomeTab() === tab && ownsPost(article, post);
+        const page = location.pathname;
+        const onHome = page === '/home';
+        if (!onHome && !discussionPath.test(page)) return;
+        if (action === 'feedback' && !onHome) return;
+        const tab = onHome ? selectedHomeTab() : null;
+        const canAct = () => location.pathname === page && (!onHome || selectedHomeTab() === tab)
+            && button.isConnected && ownsPost(article, post);
         button.setAttribute('aria-disabled', 'true');
         try {
             await withShortcutMenu(article, post, canAct, async (menu) => {
@@ -289,7 +298,7 @@
         return button;
     }
 
-    function createActionRow(article, post) {
+    function createActionRow(article, post, onHome) {
         const row = document.createElement('div');
         row.className = 'mxga-action-row';
         const authorActions = document.createElement('div');
@@ -298,12 +307,13 @@
         icons.className = 'mxga-icons';
         const follow = addButton(article, post, 'follow');
         const block = addButton(article, post, 'block');
-        const feedback = addButton(article, post, 'feedback');
+        const feedback = onHome ? addButton(article, post, 'feedback') : null;
         const counts = document.createElement('span');
         counts.className = 'mxga-counts';
         counts.lang = 'zh-CN';
         authorActions.append(follow, counts);
-        icons.append(block, feedback);
+        icons.append(block);
+        if (feedback) icons.append(feedback);
         row.append(authorActions, icons);
         post.header.after(row);
         return { ...post, row, authorActions, follow, block, feedback, counts };
@@ -328,25 +338,33 @@
 
     function refreshCards() {
         const onHome = location.pathname === '/home';
+        const discussionId = discussionPath.exec(location.pathname)?.[1];
         const tab = onHome ? selectedHomeTab() : null;
-        for (const article of document.querySelectorAll(tweetSelector)) {
-            const post = onHome ? readPost(article) : null;
+        const articles = [...document.querySelectorAll(tweetSelector)];
+        const focalIndex = discussionId ? articles.findIndex(article =>
+            [...article.querySelectorAll('a:has(time)')].some(link =>
+                link.origin === location.origin && discussionPath.exec(link.pathname)?.[1] === discussionId)
+        ) : -1;
+        for (const [index, article] of articles.entries()) {
+            const isReply = discussionId && index > focalIndex;
+            const post = onHome || isReply ? readPost(article) : null;
             let entry = cards.get(article);
             if (entry && (!post || entry.id !== post.id || entry.author !== post.author
-                || entry.caret !== post.caret || entry.header !== post.header || !entry.row.isConnected)) {
+                || entry.caret !== post.caret || entry.header !== post.header
+                || Boolean(entry.feedback) !== onHome || !entry.row.isConnected)) {
                 entry.row.remove();
                 cards.delete(article);
                 entry = null;
             }
             if (!post) continue;
             if (!entry) {
-                entry = createActionRow(article, post);
+                entry = createActionRow(article, post, onHome);
                 cards.set(article, entry);
             }
             updateAuthorActions(entry, relationships.get(post.handle));
-            entry.feedback.hidden = entry.feedbackUnavailableOn === tab;
+            if (entry.feedback) entry.feedback.hidden = entry.feedbackUnavailableOn === tab;
             entry.block.hidden = Boolean(entry.blockUnavailable);
-            entry.row.hidden = entry.authorActions.hidden && entry.feedback.hidden && entry.block.hidden;
+            entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && (!entry.feedback || entry.feedback.hidden);
         }
     }
 
