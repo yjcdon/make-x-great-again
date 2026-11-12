@@ -231,30 +231,35 @@
         return !openingMenu && !document.querySelector(expandedCaretSelector) && !visibleMenus().length;
     }
 
-    async function withShortcutMenu(article, post, canAct, useMenu) {
+    /** 找到该帖的原生菜单项后，把后续界面交回 X。 */
+    async function withShortcutMenu(article, post, canAct, action) {
         if (!canAct() || !menuAvailable()) return;
         openingMenu = true;
         let menu;
-        let portal;
+        let handedOff = false;
         try {
             post.caret.click();
-            const ready = await waitForDom(() => {
+            const item = await waitForDom(() => {
                 if (!canAct()) return true;
                 const candidate = soleOpenMenu(post.caret);
                 if (!candidate || (menu && menu !== candidate)) return false;
                 menu = candidate;
-                portal = menu.closest('[role="menu"]');
-                portal.classList.add('mxga-shortcut-menu');
-                return menu.querySelector('[role="menuitem"]');
+                menu.classList.add('mxga-shortcut-menu');
+                return matchingItem(menu, action, post.handle);
             });
-            if (!ready || !menu || !canAct() || soleOpenMenu(post.caret) !== menu) return;
-            await useMenu(menu);
+            if (item === true || !menu || !canAct() || soleOpenMenu(post.caret) !== menu) return;
+            if (!item) return menu.querySelector('[role="menuitem"]') ? false : undefined;
+
+            handedOff = true;
+            item.click();
+            menu.classList.remove('mxga-shortcut-menu');
+            await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
         } finally {
-            if (menu && ownsPost(article, post) && soleOpenMenu(post.caret) === menu) {
+            if (!handedOff && menu && ownsPost(article, post) && soleOpenMenu(post.caret) === menu) {
                 post.caret.click();
                 await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
             }
-            portal?.classList.remove('mxga-shortcut-menu');
+            menu?.classList.remove('mxga-shortcut-menu');
             openingMenu = false;
         }
     }
@@ -275,20 +280,14 @@
             && button.isConnected && readViewerHandle() === viewer && ownsPost(article, post);
         button.setAttribute('aria-disabled', 'true');
         try {
-            await withShortcutMenu(article, post, canAct, async (menu) => {
-                const item = matchingItem(menu, action, post.handle);
-                if (item) {
-                    item.click();
-                    await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
-                } else if (action === 'feedback' || action === 'block') {
-                    const entry = cards.get(article);
-                    if (entry?.[action] === button) {
-                        if (action === 'feedback') entry.feedbackUnavailableOn = tab;
-                        else entry.blockUnavailable = true;
-                        scheduleRefresh();
-                    }
+            const result = await withShortcutMenu(article, post, canAct, action);
+            if (result === false && action === 'block') {
+                const entry = cards.get(article);
+                if (entry?.block === button) {
+                    entry.blockUnavailable = true;
+                    scheduleRefresh();
                 }
-            });
+            }
         } finally {
             button.removeAttribute('aria-disabled');
         }
@@ -354,7 +353,6 @@
         const onNotifications = notificationsPath.test(page);
         const discussionId = discussionPath.exec(page)?.[1];
         const viewer = readViewerHandle();
-        const tab = onHome ? selectedHomeTab() : null;
         const articles = [...document.querySelectorAll(tweetSelector)];
         const focalIndex = discussionId ? articles.findIndex(article =>
             [...article.querySelectorAll('a:has(time)')].some(link =>
@@ -378,9 +376,8 @@
                 cards.set(article, entry);
             }
             updateAuthorActions(entry, relationships.get(post.handle));
-            if (entry.feedback) entry.feedback.hidden = entry.feedbackUnavailableOn === tab;
             entry.block.hidden = Boolean(entry.blockUnavailable);
-            entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && (!entry.feedback || entry.feedback.hidden);
+            entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && !entry.feedback;
         }
     }
 

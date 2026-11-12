@@ -89,7 +89,7 @@
     outline-offset: 2px;
 }
 
-/* 原生菜单保持布局，快捷操作完成后恢复正常显示。 */
+/* 只在查找原生操作时隐藏下拉内容。 */
 .mxga-shortcut-menu {
     visibility: hidden;
 }
