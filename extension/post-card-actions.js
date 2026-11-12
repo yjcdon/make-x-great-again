@@ -161,6 +161,13 @@
         return Reflect.apply(nativeSend, this, arguments);
     };
 
+    /** 从 X 的个人资料导航识别当前登录账号。 */
+    function readViewerHandle() {
+        const link = document.querySelector('a[data-testid="AppTabBar_Profile_Link"][href]');
+        if (link?.origin !== location.origin) return;
+        return /^\/([\w]+)\/?$/.exec(link.pathname)?.[1].toLowerCase();
+    }
+
     function readPost(article) {
         const author = article.querySelector(authorSelector);
         const link = author?.querySelector('a:has(time)');
@@ -261,9 +268,11 @@
         const onHome = page === '/home';
         if (!onHome && !discussionPath.test(page) && !notificationsPath.test(page)) return;
         if (action === 'feedback' && !onHome) return;
+        const viewer = readViewerHandle();
+        if (!viewer || post.handle === viewer) return;
         const tab = onHome ? selectedHomeTab() : null;
         const canAct = () => location.pathname === page && (!onHome || selectedHomeTab() === tab)
-            && button.isConnected && ownsPost(article, post);
+            && button.isConnected && readViewerHandle() === viewer && ownsPost(article, post);
         button.setAttribute('aria-disabled', 'true');
         try {
             await withShortcutMenu(article, post, canAct, async (menu) => {
@@ -338,12 +347,13 @@
         entry.counts.hidden = !counts;
     }
 
-    /** 为首页、帖子回复和通知中的帖子卡片同步作者操作。 */
+    /** 为首页、帖子回复和通知中的其他作者同步快捷操作。 */
     function refreshCards() {
         const page = location.pathname;
         const onHome = page === '/home';
         const onNotifications = notificationsPath.test(page);
         const discussionId = discussionPath.exec(page)?.[1];
+        const viewer = readViewerHandle();
         const tab = onHome ? selectedHomeTab() : null;
         const articles = [...document.querySelectorAll(tweetSelector)];
         const focalIndex = discussionId ? articles.findIndex(article =>
@@ -352,16 +362,17 @@
         ) : -1;
         for (const [index, article] of articles.entries()) {
             const isReply = discussionId && index > focalIndex;
-            const post = onHome || onNotifications || isReply ? readPost(article) : null;
+            const post = viewer && (onHome || onNotifications || isReply) ? readPost(article) : null;
+            const showActions = post && post.handle !== viewer;
             let entry = cards.get(article);
-            if (entry && (!post || entry.id !== post.id || entry.author !== post.author
+            if (entry && (!showActions || entry.id !== post.id || entry.author !== post.author
                 || entry.caret !== post.caret || entry.header !== post.header
                 || Boolean(entry.feedback) !== onHome || !entry.row.isConnected)) {
                 entry.row.remove();
                 cards.delete(article);
                 entry = null;
             }
-            if (!post) continue;
+            if (!showActions) continue;
             if (!entry) {
                 entry = createActionRow(article, post, onHome);
                 cards.set(article, entry);
