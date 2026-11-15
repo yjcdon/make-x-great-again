@@ -10,7 +10,7 @@
     const postLinkSelector = ':is([data-testid="tweetText"], [data-testid="twitterArticleRichTextView"], '
         + '[data-testid="primaryColumn"]) a[href]';
     const shortLinkSelector = ':is(a[href^="https://t.co/"], a[href^="http://t.co/"])';
-    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2|NotificationsTimeline)$/;
+    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|UserTweets(?:AndReplies)?|User(?:Originals|Replies|Reposts)Timeline)$/;
     const postPath = /^\/([\w]+)\/status\/(\d+)$/;
     const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
     const notificationsPath = /^\/notifications(?:\/(?:verified|mentions))?\/?$/;
@@ -68,35 +68,67 @@
         }
     }
 
+    /** 原文有时仍是短链，而实体中的 url 已经是完整地址。 */
+    function rememberLinkEntities(entries, text) {
+        if (!Array.isArray(entries)) return;
+        const characters = typeof text === 'string' ? Array.from(text) : [];
+        for (const entry of entries) {
+            const target = readWebUrl(entry?.expanded_url);
+            if (!target || target.hostname === 't.co') continue;
+
+            let short = readWebUrl(entry.url);
+            if (short?.href === target.href && Array.isArray(entry.indices)) {
+                const [start, end] = entry.indices;
+                if (Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end <= characters.length) {
+                    const source = characters.slice(start, end).join('');
+                    if (/^https?:\/\/t\.co\/[a-z\d]+$/i.test(source)) short = readWebUrl(source);
+                }
+            }
+            if (short?.hostname === 't.co') linkDestinations.set(short.pathname, target.href);
+        }
+    }
+
+    /** 用卡片自己的链接字段补全预览图使用的短链。 */
+    function rememberCardLink(card) {
+        const values = card.legacy?.binding_values;
+        if (!Array.isArray(values)) return;
+        const preview = readWebUrl(values.find(binding => binding?.key === 'card_url')?.value?.string_value);
+        if (!preview) return;
+
+        const short = readWebUrl(card.legacy.url) ?? readWebUrl(card.rest_id);
+        if (short?.hostname !== 't.co' || linkDestinations.has(short.pathname)) return;
+        const destination = preview.hostname === 't.co' ? linkDestinations.get(preview.pathname) : preview.href;
+        if (destination) linkDestinations.set(short.pathname, destination);
+    }
+
     /** 复用 X 已加载的帖子数据读取作者与短链接的目标地址。 */
     function rememberPosts(posts) {
         if (!posts) return;
         const nodes = [posts];
+        const linkCards = [];
         while (nodes.length) {
             const node = nodes.pop();
             if (!node || typeof node !== 'object') continue;
             if (node.user_results?.result) rememberPostAuthor(node.user_results.result);
-            if (Array.isArray(node.urls)) {
-                for (const entry of node.urls) {
-                    const short = readWebUrl(entry?.url);
-                    const target = readWebUrl(entry?.expanded_url);
-                    if (short?.hostname === 't.co' && target && target.hostname !== 't.co') {
-                        linkDestinations.set(short.pathname, target.href);
-                    }
-                }
-            }
+            rememberLinkEntities(node.urls);
+            rememberLinkEntities(node.entities?.urls, node.full_text);
+            if (node.card?.legacy) linkCards.push(node.card);
             for (const value of Object.values(node)) {
                 if (value && typeof value === 'object') nodes.push(value);
             }
         }
+        for (const card of linkCards) rememberCardLink(card);
     }
 
+    /** 从 X 已加载的帖子或关注操作响应同步扩展数据。 */
     function rememberResponse(data, request) {
         if (!request.number) {
             const posts = data?.data;
+            const profile = posts?.user?.result;
             rememberPosts(posts?.home ?? posts?.threaded_conversation_with_injections_v2
                 ?? posts?.threaded_conversation_with_injections
-                ?? posts?.viewer_v2?.user_results?.result?.notification_timeline?.timeline);
+                ?? posts?.viewer_v2?.user_results?.result?.notification_timeline?.timeline
+                ?? profile?.timeline_v2?.timeline ?? profile?.timeline?.timeline ?? posts?.tweetResult?.result);
         } else {
             if (!data || typeof data !== 'object' || Array.isArray(data) || data.error || data.errors?.length) return;
             const id = data.id_str ?? data.rest_id ?? request.userId;
@@ -119,7 +151,7 @@
         scheduleRefresh();
     }
 
-    // 只读取 X 已经发起的首页、详情、通知和关注请求。
+    // 只读取 X 已经发起的帖子和关注请求。
     function observedRequest(url, method) {
         try {
             const target = new URL(url, location.href);
