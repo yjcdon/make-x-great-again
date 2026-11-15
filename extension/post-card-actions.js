@@ -6,6 +6,7 @@
     const caretSelector = 'button[data-testid="caret"]';
     const expandedCaretSelector = tweetSelector + ' ' + caretSelector + '[aria-expanded="true"]';
     const dropdownSelector = '[role="menu"] [data-testid="Dropdown"]';
+    const confirmationSelector = '[data-testid="confirmationSheetCancel"], [data-testid="confirmationSheetConfirm"]';
     const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2|NotificationsTimeline)$/;
     const postPath = /^\/([\w]+)\/status\/(\d+)$/;
     const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
@@ -201,7 +202,7 @@
         return menus.length === 1 ? menus[0] : null;
     }
 
-    function waitForDom(check) {
+    function waitForDom(check, timeoutMs = 1200) {
         const ready = check();
         if (ready) return Promise.resolve(ready);
         return new Promise((resolve) => {
@@ -209,14 +210,49 @@
                 const value = check();
                 if (value) finish(value);
             });
-            const timeout = setTimeout(() => finish(null), 1200);
+            const timeout = timeoutMs ? setTimeout(() => finish(null), timeoutMs) : undefined;
             function finish(value) {
                 clearTimeout(timeout);
                 watcher.disconnect();
                 resolve(value);
             }
-            watcher.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded'] });
+            watcher.observe(document.body, {
+                childList: true, subtree: true, attributes: true,
+                attributeFilter: ['aria-expanded', 'aria-hidden', 'hidden']
+            });
         });
+    }
+
+    function blockConfirmation() {
+        return [...document.querySelectorAll(confirmationSelector)].some(control =>
+            control.getClientRects().length && !control.closest('[aria-hidden="true"], [hidden]'));
+    }
+
+    /** 屏蔽确认结束后收起 X 恢复的原下拉菜单，手动打开菜单时交还控制。 */
+    async function finishBlockMenu(post, canAct) {
+        let manualMenu = false;
+        const noteManualMenu = (event) => {
+            if (event.isTrusted && event.target.closest?.(caretSelector)) manualMenu = true;
+        };
+        document.addEventListener('click', noteManualMenu, true);
+        try {
+            if (await waitForDom(() => !canAct() || blockConfirmation())) {
+                await waitForDom(() => !canAct() || !blockConfirmation(), 0);
+            }
+            // X 可能在确认框卸载之后才恢复三点菜单。
+            const menu = await waitForDom(() => manualMenu || !canAct() || soleOpenMenu(post.caret));
+            if (!menu || menu === true || manualMenu || !canAct() || soleOpenMenu(post.caret) !== menu) return;
+
+            menu.classList.add('mxga-shortcut-menu');
+            try {
+                post.caret.click();
+                await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
+            } finally {
+                menu.classList.remove('mxga-shortcut-menu');
+            }
+        } finally {
+            document.removeEventListener('click', noteManualMenu, true);
+        }
     }
 
     function matchingItem(menu, action, handle) {
@@ -231,7 +267,7 @@
         return !openingMenu && !document.querySelector(expandedCaretSelector) && !visibleMenus().length;
     }
 
-    /** 找到该帖的原生菜单项后，把后续界面交回 X。 */
+    /** 调用原生菜单项，屏蔽确认结束后收起仍属于该帖的下拉菜单。 */
     async function withShortcutMenu(article, post, canAct, action) {
         if (!canAct() || !menuAvailable()) return;
         openingMenu = true;
@@ -252,8 +288,12 @@
 
             handedOff = true;
             item.click();
-            menu.classList.remove('mxga-shortcut-menu');
-            await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
+            if (action === 'block') {
+                await finishBlockMenu(post, canAct);
+            } else {
+                menu.classList.remove('mxga-shortcut-menu');
+                await waitForDom(() => !menu.isConnected || !menu.getClientRects().length);
+            }
         } finally {
             if (!handedOff && menu && ownsPost(article, post) && soleOpenMenu(post.caret) === menu) {
                 post.caret.click();
