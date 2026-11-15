@@ -231,6 +231,9 @@
             }
         }
 
-        return { tweetSelector, viewerSelector, rememberPostAuthor, rememberRelationship, refresh };
+        return {
+            tweetSelector, viewerSelector, rememberPostAuthor, rememberRelationship, refresh,
+            isDiscussionPage: () => discussionPath.test(location.pathname)
+        };
     };
 })();

@@ -5,6 +5,7 @@
     delete window.__mxgaBootstrap;
     const actions = modules.createPostActions(scheduleRefresh);
     const links = modules.createDirectLinks();
+    const translation = modules.createNativeTranslation(actions.isDiscussionPage);
     const primarySelector = '[data-testid="primaryColumn"]';
     let refreshFrame = 0;
 
@@ -15,6 +16,7 @@
             refreshFrame = 0;
             const primary = document.querySelector(primarySelector) ?? document;
             actions.refresh(primary);
+            translation.refresh(primary);
             links.refresh();
         });
     }
