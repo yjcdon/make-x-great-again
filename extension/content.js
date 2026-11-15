@@ -6,7 +6,9 @@
     const actions = modules.createPostActions(scheduleRefresh);
     const links = modules.createDirectLinks();
     const translation = modules.createNativeTranslation(actions.isDiscussionPage);
+    const extensionUiSelector = '.mxga-action-row, .mxga-article-metadata';
     const primarySelector = '[data-testid="primaryColumn"]';
+    const articleSelector = '[data-testid="twitterArticleReadView"]';
     let refreshFrame = 0;
 
     /** 合并同一帧的主栏快捷操作与页面外链更新。 */
@@ -15,8 +17,12 @@
         refreshFrame = requestAnimationFrame(() => {
             refreshFrame = 0;
             const primary = document.querySelector(primarySelector) ?? document;
-            actions.refresh(primary);
+            const mainPost = actions.refresh(primary);
+            const article = mainPost?.querySelector(articleSelector);
             translation.refresh(primary);
+            if (actions.isDiscussionPage()) {
+                modules.refreshArticleMetadata(article ?? primary.querySelector(articleSelector));
+            }
             links.refresh();
         });
     }
@@ -32,7 +38,7 @@
 
     /** 跳过页面无关变化和扩展自身的样式、按钮与链接更新。 */
     function affectsContent({ target, type, attributeName, addedNodes, removedNodes }) {
-        if (target.nodeType !== Node.ELEMENT_NODE || target.closest('.mxga-action-row')) return false;
+        if (target.nodeType !== Node.ELEMENT_NODE || target.closest(extensionUiSelector)) return false;
         if (type === 'attributes') {
             if (target.matches(actions.viewerSelector)) return true;
             if (attributeName === 'aria-selected') return target.matches('[role="tab"]');
@@ -41,7 +47,7 @@
         }
         const inPrimary = target.closest(primarySelector);
         return [...addedNodes, ...removedNodes].some(node => node.nodeType === Node.ELEMENT_NODE
-            && !node.matches('.mxga-action-row')
+            && !node.matches(extensionUiSelector)
             && (inPrimary || node.matches(primarySelector + ', ' + actions.viewerSelector)
                 || node.querySelector(primarySelector + ', ' + actions.viewerSelector)))
             || [...addedNodes].some(node => node.nodeType === Node.ELEMENT_NODE && links.containsShortLink(node));

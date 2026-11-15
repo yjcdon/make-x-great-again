@@ -229,6 +229,7 @@
                 entry.block.hidden = Boolean(entry.blockUnavailable);
                 entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && !entry.feedback;
             }
+            return main;
         }
 
         return {
