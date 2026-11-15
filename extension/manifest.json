@@ -13,7 +13,7 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*"],
-      "js": ["post-card-actions.js"],
+      "js": ["x-data.js", "native-menu.js", "direct-links.js", "post-card-actions.js", "content.js"],
       "css": ["post-card-actions.css"],
       "run_at": "document_start",
       "world": "MAIN"
