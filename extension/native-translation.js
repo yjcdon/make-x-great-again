@@ -12,19 +12,30 @@
         }
     }
 
-    modules.createNativeTranslation = (isDiscussionPage) => {
+    modules.createNativeTranslation = ({ isDiscussionPage, tweetSelector }) => {
         const components = new WeakMap();
         const checked = new WeakMap();
+        let articlePath;
+        let discussionPost;
 
-        /** 仅为列表正文放开原生翻译的主帖限制，沿用 X 的语言和资格判断。 */
-        function enableTranslation(component) {
+        function isArticleReply(post) {
+            if (articlePath !== location.pathname || !post?.isConnected) return false;
+            if (!discussionPost?.isConnected) return true;
+            return Boolean(discussionPost.compareDocumentPosition(post) & Node.DOCUMENT_POSITION_FOLLOWING)
+                && !discussionPost.contains(post);
+        }
+
+        /** 为列表和文章回复放开主帖限制，沿用 X 的语言和翻译资格判断。 */
+        function enableTranslation(component, post) {
             const gate = component._shouldDisableTranslation;
             const source = Function.prototype.toString.call(gate);
             if (!source.includes('isFocal') || !source.includes('_getMemoizedDisableTranslation')) return;
 
             function listGate() {
                 const props = component.props;
-                if (isDiscussionPage() || props.isFocal || props.isTranslatable !== true) return gate.call(component);
+                if (props.isFocal || props.isTranslatable !== true || (isDiscussionPage() && !isArticleReply(post))) {
+                    return gate.call(component);
+                }
 
                 // 只让翻译判断看到 isFocal，整张卡片的渲染仍使用原属性。
                 component.props = { ...props, isFocal: true };
@@ -41,10 +52,20 @@
             component.forceUpdate();
         }
 
-        /** 列表刷新时沿用 X 已挂载的正文组件，无需请求翻译。 */
-        function refresh(root) {
-            if (isDiscussionPage()) return;
+        /** 沿用 X 已挂载的正文组件，在文章滚出屏幕后继续处理回复。 */
+        function refresh(root, mainPost, article) {
+            const discussion = isDiscussionPage();
+            discussionPost = mainPost;
+            if (mainPost) {
+                articlePath = article ? location.pathname : undefined;
+            } else if (articlePath !== location.pathname) {
+                articlePath = undefined;
+            }
+            if (discussion && !articlePath) return;
+
             for (const text of root.querySelectorAll(tweetTextSelector)) {
+                const post = discussion ? text.closest(tweetSelector) : undefined;
+                if (discussion && !isArticleReply(post)) continue;
                 let component = components.get(text);
                 if (!component) {
                     component = findTextComponent(text);
@@ -56,7 +77,9 @@
                 if (previous === null || previous === props) continue;
                 // null 表示已启用，否则只在 X 更换组件属性后重新检查。
                 checked.set(component, props);
-                if (props?.isTranslatable === true && !props.disableTranslation) enableTranslation(component);
+                if (props?.isTranslatable === true && !props.disableTranslation) {
+                    enableTranslation(component, post ?? text.closest(tweetSelector));
+                }
             }
         }
 

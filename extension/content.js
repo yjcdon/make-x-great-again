@@ -5,7 +5,7 @@
     delete window.__mxgaBootstrap;
     const actions = modules.createPostActions(scheduleRefresh);
     const links = modules.createDirectLinks();
-    const translation = modules.createNativeTranslation(actions.isDiscussionPage);
+    const translation = modules.createNativeTranslation(actions);
     const extensionUiSelector = '.mxga-action-row, .mxga-article-metadata';
     const primarySelector = '[data-testid="primaryColumn"]';
     const articleSelector = '[data-testid="twitterArticleReadView"]';
@@ -19,7 +19,7 @@
             const primary = document.querySelector(primarySelector) ?? document;
             const mainPost = actions.refresh(primary);
             const article = mainPost?.querySelector(articleSelector);
-            translation.refresh(primary);
+            translation.refresh(primary, mainPost, article);
             if (actions.isDiscussionPage()) {
                 modules.refreshArticleMetadata(article ?? primary.querySelector(articleSelector));
             }
