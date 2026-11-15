@@ -7,6 +7,9 @@
     const expandedCaretSelector = tweetSelector + ' ' + caretSelector + '[aria-expanded="true"]';
     const dropdownSelector = '[role="menu"] [data-testid="Dropdown"]';
     const confirmationSelector = '[data-testid="confirmationSheetCancel"], [data-testid="confirmationSheetConfirm"]';
+    const postLinkSelector = ':is([data-testid="tweetText"], [data-testid="twitterArticleRichTextView"], '
+        + '[data-testid="primaryColumn"]) a[href]';
+    const shortLinkSelector = ':is(a[href^="https://t.co/"], a[href^="http://t.co/"])';
     const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|ConversationTimelineV2|NotificationsTimeline)$/;
     const postPath = /^\/([\w]+)\/status\/(\d+)$/;
     const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
@@ -21,6 +24,8 @@
     const feedbackIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z"/><path fill-rule="evenodd" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z"/></svg>';
     const relationships = new Map();
     const accountsById = new Map();
+    const linkDestinations = new Map();
+    const rewrittenLinks = new WeakMap();
     const countFormat = new Intl.NumberFormat('en');
     const blockIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" stroke="currentColor" stroke-width="2"/></svg>';
     const cards = new WeakMap();
@@ -52,13 +57,34 @@
         });
     }
 
-    function rememberPostAuthors(posts) {
+    /** 只接受完整的网页地址，便于安全替换帖子中的短链接。 */
+    function readWebUrl(value) {
+        if (typeof value !== 'string' || !/^https?:\/\/[^\s]+$/i.test(value) || /(?:…|\.{3})$/.test(value)) return;
+        try {
+            const url = new URL(value);
+            if (!url.username && !url.password) return url;
+        } catch {
+            // 无法解析的链接沿用 X 的原地址。
+        }
+    }
+
+    /** 复用 X 已加载的帖子数据读取作者与短链接的目标地址。 */
+    function rememberPosts(posts) {
         if (!posts) return;
         const nodes = [posts];
         while (nodes.length) {
             const node = nodes.pop();
             if (!node || typeof node !== 'object') continue;
             if (node.user_results?.result) rememberPostAuthor(node.user_results.result);
+            if (Array.isArray(node.urls)) {
+                for (const entry of node.urls) {
+                    const short = readWebUrl(entry?.url);
+                    const target = readWebUrl(entry?.expanded_url);
+                    if (short?.hostname === 't.co' && target && target.hostname !== 't.co') {
+                        linkDestinations.set(short.pathname, target.href);
+                    }
+                }
+            }
             for (const value of Object.values(node)) {
                 if (value && typeof value === 'object') nodes.push(value);
             }
@@ -68,7 +94,7 @@
     function rememberResponse(data, request) {
         if (!request.number) {
             const posts = data?.data;
-            rememberPostAuthors(posts?.home ?? posts?.threaded_conversation_with_injections_v2
+            rememberPosts(posts?.home ?? posts?.threaded_conversation_with_injections_v2
                 ?? posts?.threaded_conversation_with_injections
                 ?? posts?.viewer_v2?.user_results?.result?.notification_timeline?.timeline);
         } else {
@@ -421,23 +447,53 @@
         }
     }
 
+    /** 原地更新 X 的短链接，供浏览器导航和复制链接使用。 */
+    function rewritePostLink(link) {
+        const short = readWebUrl(link.href);
+        if (short?.hostname !== 't.co') return rewrittenLinks.get(link) === link.href;
+
+        const candidates = [link.getAttribute('data-expanded-url'), link.title, link.getAttribute('aria-label')];
+        const target = candidates.map(readWebUrl).find(url => url && url.hostname !== 't.co');
+        const destination = linkDestinations.get(short.pathname) ?? target?.href;
+        if (!destination) return false;
+
+        link.href = destination;
+        rewrittenLinks.set(link, link.href);
+        return true;
+    }
+
+    /** 在 X 的点击处理器之前改写地址，由浏览器执行链接的默认动作。 */
+    function openPostLink(event) {
+        const link = event.target.closest?.(postLinkSelector);
+        if (link && rewritePostLink(link)) event.stopImmediatePropagation();
+    }
+
+    function refreshPostLinks() {
+        for (const link of document.querySelectorAll(postLinkSelector + shortLinkSelector)) {
+            rewritePostLink(link);
+        }
+    }
+
     function scheduleRefresh() {
         if (refreshFrame) return;
         refreshFrame = requestAnimationFrame(() => {
             refreshFrame = 0;
             refreshCards();
+            refreshPostLinks();
         });
     }
 
     function start() {
         new MutationObserver(scheduleRefresh).observe(document.body, {
             childList: true, subtree: true,
-            attributes: true, attributeFilter: ['aria-selected', 'href']
+            attributes: true, attributeFilter: ['aria-selected', 'href', 'title', 'aria-label', 'data-expanded-url']
         });
         window.navigation?.addEventListener('navigatesuccess', scheduleRefresh);
         scheduleRefresh();
     }
 
+    window.addEventListener('click', openPostLink, true);
+    window.addEventListener('auxclick', openPostLink, true);
     if (document.body) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
