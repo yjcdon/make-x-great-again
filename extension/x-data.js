@@ -3,13 +3,14 @@
 
     const modules = window.__mxgaBootstrap = {};
 
-    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|UserTweets(?:AndReplies)?|User(?:Originals|Replies|Reposts)Timeline)$/;
+    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|SearchTimeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|UserTweets(?:AndReplies)?|User(?:Originals|Replies|Reposts)Timeline)$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
 
     /** 提取帖子响应中作者与链接所需的字段，共用一次遍历。 */
     function readPostData(data) {
         const profile = data?.user?.result;
-        const root = data?.home ?? data?.threaded_conversation_with_injections_v2
+        const root = data?.home ?? data?.search_by_raw_query?.search_timeline?.timeline
+            ?? data?.threaded_conversation_with_injections_v2
             ?? data?.threaded_conversation_with_injections
             ?? data?.viewer_v2?.user_results?.result?.notification_timeline?.timeline
             ?? profile?.timeline_v2?.timeline ?? profile?.timeline?.timeline ?? data?.tweetResult?.result;

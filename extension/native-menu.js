@@ -11,7 +11,7 @@
             follow: /^(?:关注|關注|跟隨|Follow)\s+@([\w]+)$/i,
             unfollow: /^(?:取消关注|取消關注|取消跟隨|Unfollow)\s+@([\w]+)$/i,
             block: /^(?:屏蔽|封鎖|Block)\s+@([\w]+)$/i,
-            feedback: /^(?:对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|Show less often)$/i
+            feedback: /^(?:这个帖子没有帮助|对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|Show less often)$/i
         };
         let openingMenu = false;
 

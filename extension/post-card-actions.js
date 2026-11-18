@@ -10,6 +10,7 @@
         const postPath = /^\/([\w]+)\/status\/(\d+)$/;
         const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
         const notificationsPath = /^\/notifications(?:\/(?:verified|mentions))?\/?$/;
+        const searchPath = /^\/search\/?$/;
         const feedbackIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13.6c1.64-.013 3.278.76 4.284 2.02.114.14.218.282.317.43l-1.202.9c-.088-.102-.177-.197-.272-.289-.844-.823-1.98-1.264-3.125-1.26-1.146-.002-2.282.441-3.129 1.263-.095.092-.185.186-.273.287l-1.2-.902c.1-.149.205-.29.319-.429C8.728 14.364 10.36 13.59 12 13.6zM9.25 8c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9zm5.5 0c.828 0 1.5.796 1.5 1.9 0 1.105-.672 1.85-1.5 1.85s-1.5-.745-1.5-1.85c0-1.104.672-1.9 1.5-1.9z"/><path fill-rule="evenodd" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2c-4.418 0-8 3.582-8 8s3.582 8 8 8 8-3.582 8-8-3.582-8-8-8z"/></svg>';
         const relationships = new Map();
         const accountsById = new Map();
@@ -110,7 +111,7 @@
         /** 渲染和点击共用同一套页面、作者和主帖判断。 */
         function availablePost(page, article, post) {
             if (!post || !page?.viewer || post.handle === page.viewer) return false;
-            if (page.home || page.notifications) return true;
+            if (page.home || page.notifications || page.searchQuery !== undefined) return true;
             if (page.main?.isConnected) {
                 return page.main !== article && Boolean(page.main.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_FOLLOWING);
             }
@@ -123,9 +124,10 @@
             if (!event.isTrusted || button.getAttribute('aria-disabled') === 'true') return;
 
             const page = context;
-            if (!availablePost(page, article, post) || (action === 'feedback' && !page.home)) return;
+            if (!availablePost(page, article, post) || (action === 'feedback' && !page.feedbackLabel)) return;
             const tab = page.home ? selectedHomeTab() : null;
             const canAct = () => location.pathname === page.path && (!page.home || selectedHomeTab() === tab)
+                && (page.searchQuery === undefined || location.search === page.searchQuery)
                 && button.isConnected && readViewerHandle() === page.viewer && ownsPost(article, post)
                 && availablePost(context, article, post);
             button.setAttribute('aria-disabled', 'true');
@@ -143,13 +145,13 @@
             }
         }
 
-        function addButton(article, post, kind) {
+        function addButton(article, post, kind, label) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'mxga-' + kind;
             if (kind !== 'follow') {
                 button.classList.add('mxga-icon');
-                button.setAttribute('aria-label', kind === 'block' ? '屏蔽 @' + post.handle : '对此帖子不感兴趣');
+                button.setAttribute('aria-label', label);
                 button.innerHTML = kind === 'block' ? blockIcon : feedbackIcon;
             }
             button.addEventListener('click', (event) => {
@@ -158,7 +160,7 @@
             return button;
         }
 
-        function createActionRow(article, post, onHome) {
+        function createActionRow(article, post, feedbackLabel) {
             const row = document.createElement('div');
             row.className = 'mxga-action-row';
             const authorActions = document.createElement('div');
@@ -166,8 +168,8 @@
             const icons = document.createElement('div');
             icons.className = 'mxga-icons';
             const follow = addButton(article, post, 'follow');
-            const block = addButton(article, post, 'block');
-            const feedback = onHome ? addButton(article, post, 'feedback') : null;
+            const block = addButton(article, post, 'block', '屏蔽 @' + post.handle);
+            const feedback = feedbackLabel ? addButton(article, post, 'feedback', feedbackLabel) : null;
             const counts = document.createElement('span');
             counts.className = 'mxga-counts';
             counts.lang = 'zh-CN';
@@ -202,27 +204,29 @@
             const viewer = readViewerHandle();
             const home = path === '/home';
             const notifications = notificationsPath.test(path);
+            const searchQuery = searchPath.test(path) ? location.search : undefined;
+            const feedbackLabel = home ? '对此帖子不感兴趣' : searchQuery !== undefined ? '这个帖子没有帮助' : undefined;
             const discussionId = discussionPath.exec(path)?.[1];
             const main = discussionId ? locateMainPost(root, discussionId) : undefined;
             // 主帖被滚动回收时，只保留这条讨论中已经确认的回复。
             const replies = discussionId && context?.discussionId === discussionId ? context.replies : new Set();
-            context = { path, viewer, home, notifications, main, discussionId, replies };
+            context = { path, viewer, home, notifications, searchQuery, feedbackLabel, main, discussionId, replies };
 
             for (const article of root.querySelectorAll(tweetSelector)) {
-                const post = viewer && (home || notifications || discussionId) ? readPost(article) : null;
+                const post = viewer && (home || notifications || searchQuery !== undefined || discussionId) ? readPost(article) : null;
                 const show = availablePost(context, article, post);
                 if (show && main) replies.add(post.id);
                 let entry = cards.get(article);
                 if (entry && (!show || entry.id !== post.id || entry.author !== post.author
                     || entry.caret !== post.caret || entry.header !== post.header
-                    || Boolean(entry.feedback) !== home || !entry.row.isConnected)) {
+                    || entry.feedback?.getAttribute('aria-label') !== feedbackLabel || !entry.row.isConnected)) {
                     entry.row.remove();
                     cards.delete(article);
                     entry = null;
                 }
                 if (!show) continue;
                 if (!entry) {
-                    entry = createActionRow(article, post, home);
+                    entry = createActionRow(article, post, feedbackLabel);
                     cards.set(article, entry);
                 }
                 updateAuthorActions(entry, relationships.get(post.handle));
