@@ -9,9 +9,9 @@
     /** 提取帖子响应中作者与链接所需的字段，共用一次遍历。 */
     function readPostData(data) {
         const profile = data?.user?.result;
+        const conversation = data?.threaded_conversation_with_injections_v2 ?? data?.threaded_conversation_with_injections;
         const root = data?.home ?? data?.search_by_raw_query?.search_timeline?.timeline
-            ?? data?.threaded_conversation_with_injections_v2
-            ?? data?.threaded_conversation_with_injections
+            ?? conversation
             ?? data?.viewer_v2?.user_results?.result?.notification_timeline?.timeline
             ?? profile?.timeline_v2?.timeline ?? profile?.timeline?.timeline ?? data?.tweetResult?.result;
         if (!root) return;
@@ -19,11 +19,14 @@
         const authors = new Set();
         const links = new Map();
         const cards = [];
+        const replyParents = new Map();
         const nodes = [root];
         while (nodes.length) {
             const node = nodes.pop();
             if (!node || typeof node !== 'object') continue;
             if (node.user_results?.result) authors.add(node.user_results.result);
+            const parentId = conversation && node.legacy?.in_reply_to_status_id_str;
+            if (typeof parentId === 'string' && typeof node.rest_id === 'string') replyParents.set(node.rest_id, parentId);
             if (node.card?.legacy) cards.push(node.card);
             if (node.urls?.length && !links.has(node.urls)) links.set(node.urls, undefined);
             if (node.entities?.urls?.length) links.set(node.entities.urls, node.full_text);
@@ -32,7 +35,7 @@
                 if (value && typeof value === 'object') nodes.push(value);
             }
         }
-        return { authors, links, cards };
+        return { authors, links, cards, replyParents };
     }
 
     /** 观察 X 已发出的请求，共用同一份解析后的响应，并保留原始请求行为。 */

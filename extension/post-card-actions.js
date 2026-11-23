@@ -3,7 +3,7 @@
 
     const modules = window.__mxgaBootstrap;
 
-    modules.createPostActions = (scheduleRefresh) => {
+    modules.createPostActions = (schedulePost) => {
         const tweetSelector = 'article[data-testid="tweet"]';
         const authorSelector = '[data-testid="User-Name"]';
         const caretSelector = 'button[data-testid="caret"]';
@@ -17,7 +17,9 @@
         const countFormat = new Intl.NumberFormat('en');
         const blockIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m5.6 5.6 12.8 12.8" stroke="currentColor" stroke-width="2"/></svg>';
         const cards = new WeakMap();
-        const viewerSelector = 'a[data-testid="AppTabBar_Profile_Link"][href]';
+        const authorCards = new Map();
+        const replyParents = new Map();
+        const viewerSelector = 'a[data-testid="AppTabBar_Profile_Link"]';
         let context;
         const { invoke } = modules.createNativeMenu(tweetSelector, caretSelector);
 
@@ -74,20 +76,28 @@
         /** 从 X 的个人资料导航识别当前登录账号。 */
         function readViewerHandle() {
             const link = document.querySelector(viewerSelector);
-            if (link?.origin !== location.origin) return;
+            if (!link?.hasAttribute('href') || link.origin !== location.origin) return;
             return /^\/([\w]+)\/?$/.exec(link.pathname)?.[1].toLowerCase();
         }
 
-        function readPost(article) {
+        function readPostIdentity(article) {
             const author = article.querySelector(authorSelector);
-            const link = author?.querySelector('a:has(time)');
+            const link = author?.querySelector('a:has(time)') ?? author?.querySelector('a[href*="/status/"]');
             const match = postPath.exec(link?.pathname ?? '');
+            if (match && link.origin === location.origin) {
+                return { author, handle: match[1].toLowerCase(), id: match[2] };
+            }
+        }
+
+        function readPost(article, identity = readPostIdentity(article)) {
+            if (!identity) return null;
+            const { author } = identity;
             const caret = article.querySelector(caretSelector);
-            if (!match || !caret || !author.parentElement || link.origin !== location.origin) return null;
+            if (!caret || !author.parentElement) return null;
             let header = author.parentElement;
             while (header !== article && !header.contains(caret)) header = header.parentElement;
             if (header === article) return null;
-            return { author, handle: match[1].toLowerCase(), id: match[2], caret, header };
+            return { ...identity, caret, header };
         }
 
         function selectedHomeTab() {
@@ -100,22 +110,38 @@
             return current?.id === post.id && current.handle === post.handle && current.caret === post.caret;
         }
 
-        function locateMainPost(root, discussionId) {
-            for (const link of root.querySelectorAll(tweetSelector + ' a:has(time)')) {
-                if (link.origin === location.origin && discussionPath.exec(link.pathname)?.[1] === discussionId) {
-                    return link.closest(tweetSelector);
-                }
+        function matchesMainPost(article, identity, discussionId) {
+            if (identity) return identity.id === discussionId;
+            for (const link of article.querySelectorAll('a:has(time)')) {
+                if (link.origin === location.origin && discussionPath.exec(link.pathname)?.[1] === discussionId
+                    && link.closest(tweetSelector) === article && !link.closest('[data-testid="quoteTweet"]')) return true;
             }
+            return false;
+        }
+
+        function isReply(article, id) {
+            const { main, discussionId, replies } = context;
+            if (!discussionId || id === discussionId || article === main) return false;
+            if (main?.isConnected) {
+                return Boolean(main.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_FOLLOWING)
+                    && !main.contains(article);
+            }
+            if (replies.has(id)) return true;
+            // X 可回收主帖 DOM。使用响应里的回复链识别随后挂载的卡片。
+            let parent = replyParents.get(id);
+            if (!parent) return false;
+            const visited = new Set();
+            for (; parent && !visited.has(parent); parent = replyParents.get(parent)) {
+                if (parent === discussionId || replies.has(parent)) return true;
+                visited.add(parent);
+            }
+            return false;
         }
 
         /** 渲染和点击共用同一套页面、作者和主帖判断。 */
-        function availablePost(page, article, post) {
+        function availablePost(page, article, post, reply) {
             if (!post || !page?.viewer || post.handle === page.viewer) return false;
-            if (page.home || page.notifications || page.searchQuery !== undefined) return true;
-            if (page.main?.isConnected) {
-                return page.main !== article && Boolean(page.main.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_FOLLOWING);
-            }
-            return page.replies.has(post.id);
+            return page.home || page.notifications || page.searchQuery !== undefined || (reply ?? isReply(article, post.id));
         }
 
         async function activate(article, post, action, button, event) {
@@ -137,7 +163,7 @@
                     const entry = cards.get(article);
                     if (entry?.block === button) {
                         entry.blockUnavailable = true;
-                        scheduleRefresh();
+                        schedulePost(article);
                     }
                 }
             } finally {
@@ -165,6 +191,7 @@
             row.className = 'mxga-action-row';
             const authorActions = document.createElement('div');
             authorActions.className = 'mxga-author-actions';
+            authorActions.hidden = true;
             const icons = document.createElement('div');
             icons.className = 'mxga-icons';
             const follow = addButton(article, post, 'follow');
@@ -182,6 +209,8 @@
         }
 
         function updateAuthorActions(entry, state) {
+            if (entry.authorState === state) return;
+            entry.authorState = state;
             entry.authorActions.hidden = !state || state.requested;
             if (entry.authorActions.hidden) return;
             const label = state.following ? '取关' : '关注';
@@ -198,46 +227,121 @@
             entry.counts.hidden = !counts;
         }
 
-        /** 同步主栏已挂载的帖子，刷新时及时清理失效的快捷行。 */
-        function refresh(root) {
+        /** 初始化页面范围和身份。调用方只在页面、主栏或身份入口变化时调用。 */
+        function updatePage(root, viewerChanged) {
             const path = location.pathname;
-            const viewer = readViewerHandle();
+            const search = location.search;
+            if (context?.root === root && context.path === path && context.search === search) {
+                if (!viewerChanged) return false;
+                const viewer = readViewerHandle();
+                if (context.viewer === viewer) return false;
+                context.viewer = viewer;
+                return true;
+            }
             const home = path === '/home';
             const notifications = notificationsPath.test(path);
-            const searchQuery = searchPath.test(path) ? location.search : undefined;
+            const searchQuery = searchPath.test(path) ? search : undefined;
             const feedbackLabel = home ? '对此帖子不感兴趣' : searchQuery !== undefined ? '这个帖子没有帮助' : undefined;
             const discussionId = discussionPath.exec(path)?.[1];
-            const main = discussionId ? locateMainPost(root, discussionId) : undefined;
-            // 主帖被滚动回收时，只保留这条讨论中已经确认的回复。
-            const replies = discussionId && context?.discussionId === discussionId ? context.replies : new Set();
-            context = { path, viewer, home, notifications, searchQuery, feedbackLabel, main, discussionId, replies };
+            context = {
+                root, path, search, viewer: readViewerHandle(), home, notifications, searchQuery, feedbackLabel, discussionId,
+                main: undefined, replies: new Set(), replyCards: new WeakSet(), waiting: new Set()
+            };
+            return true;
+        }
 
-            for (const article of root.querySelectorAll(tweetSelector)) {
-                const post = viewer && (home || notifications || searchQuery !== undefined || discussionId) ? readPost(article) : null;
-                const show = availablePost(context, article, post);
-                if (show && main) replies.add(post.id);
-                let entry = cards.get(article);
-                if (entry && (!show || entry.id !== post.id || entry.author !== post.author
-                    || entry.caret !== post.caret || entry.header !== post.header
-                    || entry.feedback?.getAttribute('aria-label') !== feedbackLabel || !entry.row.isConnected)) {
-                    entry.row.remove();
-                    cards.delete(article);
-                    entry = null;
+        function removePost(article) {
+            if (context?.main === article) context.main = undefined;
+            context?.waiting.delete(article);
+            context?.replyCards.delete(article);
+            removeActionRow(article);
+        }
+
+        function removeActionRow(article) {
+            const entry = cards.get(article);
+            if (!entry) return;
+            entry.row.remove();
+            cards.delete(article);
+            const authorPosts = authorCards.get(entry.handle);
+            authorPosts.delete(article);
+            if (!authorPosts.size) authorCards.delete(entry.handle);
+        }
+
+        function retryWaitingReplies() {
+            for (const article of context.waiting) schedulePost(article);
+            context.waiting.clear();
+        }
+
+        /** 合并 X 已返回的回复关系，只重试尚未确认归属的卡片。 */
+        function rememberReplies(parents) {
+            let changed = false;
+            for (const [id, parent] of parents) {
+                if (replyParents.get(id) === parent) continue;
+                replyParents.set(id, parent);
+                changed = true;
+            }
+            if (changed && context?.waiting.size) retryWaitingReplies();
+        }
+
+        function refreshAuthor(handle) {
+            for (const article of authorCards.get(handle) ?? []) schedulePost(article);
+        }
+
+        /** 更新单张卡片，主帖和作者关系可在卡片挂载后补齐。 */
+        function refreshPost(article) {
+            const { discussionId, feedbackLabel, viewer, home, notifications, searchQuery } = context;
+            const identity = discussionId || (viewer && (home || notifications || searchQuery !== undefined))
+                ? readPostIdentity(article) : undefined;
+            if (discussionId && (!context.main?.isConnected || context.main === article)) {
+                if (matchesMainPost(article, identity, discussionId)) {
+                    if (context.main !== article) {
+                        context.main = article;
+                        retryWaitingReplies();
+                    }
+                } else if (context.main === article) {
+                    context.main = undefined;
                 }
-                if (!show) continue;
+            }
+
+            const reply = isReply(article, identity?.id);
+            if (reply) {
+                context.replyCards.add(article);
+                if (identity) context.replies.add(identity.id);
+            } else {
+                context.replyCards.delete(article);
+            }
+            if (discussionId && !reply && !context.main?.isConnected) context.waiting.add(article);
+            else context.waiting.delete(article);
+
+            const post = viewer && identity ? readPost(article, identity) : null;
+            const show = availablePost(context, article, post, reply);
+            let entry = cards.get(article);
+            if (entry && (!show || entry.id !== post.id || entry.author !== post.author
+                || entry.caret !== post.caret || entry.header !== post.header
+                || entry.feedback?.getAttribute('aria-label') !== feedbackLabel || !entry.row.isConnected)) {
+                removeActionRow(article);
+                entry = null;
+            }
+            if (show) {
                 if (!entry) {
                     entry = createActionRow(article, post, feedbackLabel);
                     cards.set(article, entry);
+                    if (!authorCards.has(post.handle)) authorCards.set(post.handle, new Set());
+                    authorCards.get(post.handle).add(article);
                 }
                 updateAuthorActions(entry, relationships.get(post.handle));
                 entry.block.hidden = Boolean(entry.blockUnavailable);
                 entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && !entry.feedback;
             }
-            return main;
+            return article === context.main;
         }
 
         return {
-            tweetSelector, viewerSelector, rememberPostAuthor, rememberRelationship, refresh,
+            tweetSelector, viewerSelector, rememberPostAuthor, rememberRelationship, rememberReplies,
+            refreshAuthor, updatePage, refreshPost, removePost,
+            canTranslate: article => context?.path === location.pathname
+                && context.root.contains(article) && (!context.discussionId || context.replyCards.has(article)),
+            isCurrentPage: () => context?.path === location.pathname && context.search === location.search,
             isDiscussionPage: () => discussionPath.test(location.pathname)
         };
     };

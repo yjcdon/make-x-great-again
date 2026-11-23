@@ -25,6 +25,7 @@
         function rememberLinkEntities(entries, text) {
             if (!Array.isArray(entries)) return;
             const characters = typeof text === 'string' ? Array.from(text) : [];
+            let changed = false;
             for (const entry of entries) {
                 const target = readWebUrl(entry?.expanded_url);
                 if (!target || target.hostname === 't.co') continue;
@@ -37,8 +38,12 @@
                         if (/^https?:\/\/t\.co\/[a-z\d]+$/i.test(source)) short = readWebUrl(source);
                     }
                 }
-                if (short?.hostname === 't.co') linkDestinations.set(short.pathname, target.href);
+                if (short?.hostname === 't.co' && linkDestinations.get(short.pathname) !== target.href) {
+                    linkDestinations.set(short.pathname, target.href);
+                    changed = true;
+                }
             }
+            return changed;
         }
 
         /** 用卡片自己的链接字段补全预览图使用的短链。 */
@@ -51,14 +56,22 @@
             const short = readWebUrl(card.legacy.url) ?? readWebUrl(card.rest_id);
             if (short?.hostname !== 't.co' || linkDestinations.has(short.pathname)) return;
             const destination = preview.hostname === 't.co' ? linkDestinations.get(preview.pathname) : preview.href;
-            if (destination) linkDestinations.set(short.pathname, destination);
+            if (destination) {
+                linkDestinations.set(short.pathname, destination);
+                return true;
+            }
         }
 
         /** 先登记正文短链，供引用这些短链的预览卡片复用。 */
         function rememberPostLinks({ links, cards }) {
-            for (const [entries, text] of links) rememberLinkEntities(entries, text);
-            for (const card of cards) rememberCardLink(card);
-            return Boolean(links.size || cards.length);
+            let changed = false;
+            for (const [entries, text] of links) {
+                if (rememberLinkEntities(entries, text)) changed = true;
+            }
+            for (const card of cards) {
+                if (rememberCardLink(card)) changed = true;
+            }
+            return changed;
         }
 
         /** 原地更新 X 的短链接，供浏览器导航和复制链接使用。 */
@@ -91,8 +104,9 @@
         }
 
         /** 在悬浮和复制之前，改写与点击监听覆盖范围一致的锚点。 */
-        function refresh() {
-            for (const link of document.querySelectorAll(shortLinkSelector)) rewritePostLink(link);
+        function refresh(root = document) {
+            if (root.matches?.(shortLinkSelector)) rewritePostLink(root);
+            for (const link of root.querySelectorAll(shortLinkSelector)) rewritePostLink(link);
         }
 
         return { rememberPostLinks, rewritePostLink, openPostLink, matchesShortLink, containsShortLink, refresh };
