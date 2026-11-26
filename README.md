@@ -19,11 +19,11 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 
 从源码安装时，在第 3 步选择仓库里的 [`extension/`](extension/) 文件夹。
 
-## 帖子快捷操作
+## Grok 翻译
 
-在首页、搜索、个人主页、书签和帖子详情等页面，点击「显示翻译」可以用 Grok 翻译正文，也可以切回原文。作者名下显示关注人数和关注或取关按钮，右侧提供复制和屏蔽操作。X 的菜单提供「不感兴趣」等反馈时，也会显示对应的快捷入口。自己的普通帖在 Grok 旁显示复制图标。
+点击帖子或回复的「显示翻译」，用 Grok 在原位置翻译正文，也可以切回原文。
 
-![X 普通帖中显示的作者人数、关注和复制等操作，以及 Grok 译文](docs/screenshots/post-actions.jpg)
+![Grok 翻译功能图，展示帖子里的中文译文和显示原文入口](docs/screenshots/01-grok-translation.jpg)
 
 ## 复制帖子和文章
 
@@ -32,8 +32,22 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 
 图片以 Markdown 图片语法复制，视频使用 X 已提供的 MP4 地址。粘贴到 Typora 后可以直接查看图片、播放视频。复制成功后，图标会短暂显示勾。
 
-![X 文章详情页中的复制图标、文章标题、发布时间和查看次数](docs/screenshots/article-copy.jpg)
+![复制全文功能图，展示文章作者旁的复制图标、文章封面和标题](docs/screenshots/02-copy-full-content.jpg)
 
 ## 直开外链
 
 正文、个人简介、相关用户和悬浮资料卡里的外链，在 X 已提供完整网址时可以直接打开。
+
+![直开外链功能图，展示 X 个人主页上的网站链接](docs/screenshots/03-direct-links.jpg)
+
+## 作者信息和关注
+
+在主页、搜索、个人资料、书签和帖子详情等页面，作者名下显示正在关注和关注者人数，可以直接关注或取关。自己的普通帖在 Grok 旁显示复制图标。
+
+![作者信息和关注功能图，展示关注、取关按钮和两种关注人数](docs/screenshots/04-author-actions.jpg)
+
+## 屏蔽与帖子反馈
+
+点击快捷按钮可打开 X 原生屏蔽确认。X 为当前帖子提供「不感兴趣」等选项时，帖子旁会显示对应的快捷入口。
+
+![屏蔽与反馈功能图，展示帖子快捷图标和 X 的不感兴趣、屏蔽选项](docs/screenshots/05-post-feedback.jpg)
