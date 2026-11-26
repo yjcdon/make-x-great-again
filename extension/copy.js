@@ -6,6 +6,7 @@
     const postBodySelector = '[data-testid="tweetText"]';
     const showMoreSelector = '[data-testid="tweet-text-show-more-link"]';
     const photoImageSelector = '[data-testid="tweetPhoto"] img';
+    const videoSelector = 'video, [data-testid="videoPlayer"], [data-testid="previewInterstitial"]';
     const previewLinkSelector = '[data-testid="card.wrapper"] a[href]';
     const maxNoteTexts = 128;
     const noteTexts = new Map();
@@ -49,6 +50,7 @@
 
     modules.createCopyButton = createCopyButton;
     modules.photoImageSelector = photoImageSelector;
+    modules.videoSelector = videoSelector;
     modules.previewLinkSelector = previewLinkSelector;
 
     function escapeText(text) {
@@ -86,7 +88,7 @@
 
     modules.hasOrdinaryPostContent = (post, id) => !post.querySelector('[data-testid="twitterArticleReadView"]')
         && Boolean(ownPostElement(post, postBodySelector) || post.querySelector(postPhotoSelector(id))
-            || ownPreviewLink(post));
+            || ownPostElement(post, videoSelector) || ownPreviewLink(post));
 
     /** 仅在标签页内存保留最近收到的长帖正文，供折叠卡片复制。 */
     modules.rememberNoteTexts = texts => {
@@ -97,12 +99,12 @@
         }
     };
 
-    /** 从正文组件向上查找同一帖子的已加载数据。 */
-    function findTweet(body, id) {
-        const key = Object.keys(body).find(name => name.startsWith('__reactFiber$'));
-        for (let fiber = body[key]; fiber; fiber = fiber.return) {
-            const tweet = fiber.stateNode?.props?.tweet ?? fiber.memoizedProps?.tweet;
-            if (tweet?.id_str === id) return tweet;
+    /** 从 X 已挂载的组件中读取当前正文或播放器的数据。 */
+    function findReactProp(element, name, matches) {
+        const key = Object.keys(element).find(name => name.startsWith('__reactFiber$'));
+        for (let fiber = element[key]; fiber; fiber = fiber.return) {
+            const value = fiber.stateNode?.props?.[name] ?? fiber.memoizedProps?.[name];
+            if (matches(value)) return value;
         }
     }
 
@@ -122,14 +124,33 @@
         }
     }
 
-    modules.markdown = { escapeText, markdownLink, readPhotoMarkdown };
+    /** 复用 X 已提供的 MP4，优先选约 2.2 Mbps 以内清晰度最高的版本。 */
+    function readVideoEmbed(variants) {
+        const mp4 = variants?.filter(variant => variant.content_type === 'video/mp4'
+            && variant.url?.startsWith('https://video.twimg.com/'))
+            .sort((a, b) => b.bitrate - a.bitrate);
+        const variant = mp4?.find(item => item.bitrate <= 2_200_000) ?? mp4?.at(-1);
+        if (!variant) return '';
+        const url = variant.url.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+        return '<video controls preload="none" src="' + url + '"></video>';
+    }
+
+    /** 文章里的每段视频从所在的正文区块读取。 */
+    function readArticleVideo(block) {
+        const video = block.querySelector(videoSelector);
+        const source = video && findReactProp(video, 'source', value => value?.variants?.length);
+        return readVideoEmbed(source?.variants);
+    }
+
+    modules.markdown = { escapeText, markdownLink, readPhotoMarkdown, readArticleVideo };
 
     modules.createCardCopyButton = (post, readId) => createCopyButton(() => {
         const id = readId();
         if (!id) return;
         const body = ownPostElement(post, postBodySelector);
         const folded = body && ownPostElement(post, showMoreSelector);
-        const tweet = folded && findTweet(body, id);
+        const video = ownPostElement(post, videoSelector);
+        const tweet = (folded || video) && findReactProp(body ?? video, 'tweet', value => value?.id_str === id);
         let text = '';
         if (body) text = folded ? readFoldedText(body, id, tweet) : readCopyText(body);
         if (text === undefined) return;
@@ -139,6 +160,9 @@
         const previewUrl = destination && destination.origin !== location.origin && !text.includes(destination.href)
             ? destination.href : '';
         const photos = new Set(Array.from(post.querySelectorAll(postPhotoSelector(id)), readPhotoMarkdown));
-        return [text, previewUrl, ...photos].filter(Boolean).join('\n\n');
+        const videos = (tweet?.extended_entities?.media ?? [])
+            .filter(media => media.type === 'video')
+            .map(media => readVideoEmbed(media.video_info?.variants));
+        return [text, previewUrl, ...photos, ...videos].filter(Boolean).join('\n\n');
     });
 })();

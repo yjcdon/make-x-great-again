@@ -4,7 +4,7 @@
     const modules = window.__mxgaBootstrap;
     const { resolveLinkUrl } = modules.directLinks;
     const { photoImageSelector } = modules;
-    const { escapeText, markdownLink, readPhotoMarkdown } = modules.markdown;
+    const { escapeText, markdownLink, readPhotoMarkdown, readArticleVideo } = modules.markdown;
     const headingSelector = 'h1, h2, h3, h4, h5, h6';
     const blockSelector = '[data-block="true"], ' + headingSelector + ', p, ul, ol, pre, blockquote, hr';
 
@@ -82,6 +82,8 @@
             const post = block.querySelector('a[href]:has(time)');
             const url = post && resolveLinkUrl(post)?.href;
             if (url) return markdownLink('引用的 X 帖子', url);
+            const video = readArticleVideo(block);
+            if (video) return video;
             const photos = Array.from(block.querySelectorAll(photoImageSelector), readPhotoMarkdown);
             return [...photos, escapeText(block.innerText.trim())].filter(Boolean).join('\n\n');
         }
