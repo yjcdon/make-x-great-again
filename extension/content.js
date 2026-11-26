@@ -203,8 +203,8 @@
             refreshAuthor(actions.rememberRelationship(data, request));
         }
     });
-    window.addEventListener('click', links.openPostLink, true);
-    window.addEventListener('auxclick', links.openPostLink, true);
+    window.addEventListener('click', links.openLink, true);
+    window.addEventListener('auxclick', links.openLink, true);
     if (document.body) start();
     else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
