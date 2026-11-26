@@ -19,7 +19,6 @@
     const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
     const pendingPosts = new Set();
-    const linkRoots = new Set();
     const frameBudget = 4;
     const beforePaintBudget = 1.5;
     let primary;
@@ -27,7 +26,6 @@
     let beforePaintWork = 0;
     let pageChanged = true;
     let viewerChanged = true;
-    let refreshAllLinks = true;
     let pendingMetadata;
 
     function scheduleFrame() {
@@ -58,11 +56,7 @@
         const deadline = performance.now() + Math.max(0, frameBudget - beforePaintWork);
         beforePaintWork = 0;
         if (pageChanged || viewerChanged) {
-            if (pageChanged) {
-                const next = document.querySelector(primarySelector) ?? document;
-                if (next !== primary) refreshAllLinks = true;
-                primary = next;
-            }
+            if (pageChanged) primary = document.querySelector(primarySelector) ?? document;
             if (actions.updatePage(primary, viewerChanged)) {
                 for (const post of primary.querySelectorAll(actions.tweetSelector)) pendingPosts.add(post);
                 if (pageChanged && actions.isDiscussionPage()) {
@@ -81,22 +75,10 @@
             pendingMetadata = undefined;
         }
 
-        if (performance.now() < deadline) {
-            if (refreshAllLinks) {
-                refreshAllLinks = false;
-                linkRoots.clear();
-                links.refresh();
-            } else {
-                for (const root of linkRoots) {
-                    linkRoots.delete(root);
-                    if (root.isConnected) links.refresh(root);
-                    if (performance.now() >= deadline) break;
-                }
-            }
-        }
+        links.refresh(deadline);
 
         frame = 0;
-        if (pendingPosts.size || linkRoots.size || refreshAllLinks || pendingMetadata) scheduleFrame();
+        if (pendingPosts.size || links.hasPendingWork() || pendingMetadata) scheduleFrame();
     }
 
     function refreshAuthor(handle) {
@@ -107,10 +89,8 @@
         for (const user of posts.authors) refreshAuthor(actions.rememberPostAuthor(user));
         actions.rememberReplies(posts.replyParents);
         modules.rememberNoteTexts(posts.noteTexts);
-        if (links.rememberPostLinks(posts)) {
-            refreshAllLinks = true;
-            scheduleFrame();
-        }
+        links.rememberPostLinks(posts);
+        if (links.hasPendingWork()) scheduleFrame();
     }
 
     function saveAttributeChange({ target, attributeName, oldValue }) {
@@ -132,7 +112,7 @@
             const post = target.closest(actions.tweetSelector);
             if (post && primary?.contains(post)) pendingPosts.add(post);
         }
-        if (target.localName === 'a' && links.matchesShortLink(target)) linkRoots.add(target);
+        if (target.localName === 'a') links.queueLink(target);
     }
 
     function saveChildChanges({ target, addedNodes, removedNodes }) {
@@ -159,14 +139,17 @@
             }
         }
         for (const node of addedNodes) {
-            if (node.nodeType === Node.ELEMENT_NODE && !node.matches(extensionUiSelector) && links.containsShortLink(node)) {
-                linkRoots.add(node);
-            }
+            if (node.nodeType === Node.ELEMENT_NODE && !node.matches(extensionUiSelector)) links.queueRoot(node);
             if (outsideDiscussionCard && node.nodeType === Node.ELEMENT_NODE) {
                 const view = node.matches(articleSelector) ? node
                     : node.matches(articleFooterSelector) ? node.previousElementSibling : node.querySelector(articleSelector);
                 if (view) pendingMetadata = view;
             }
+        }
+        for (const node of removedNodes) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            links.retryUnresolved();
+            break;
         }
     }
 
@@ -178,7 +161,7 @@
                 if (record.type === 'attributes') saveAttributeChange(record);
                 else saveChildChanges(record);
             }
-            if (pageChanged || viewerChanged || pendingPosts.size || linkRoots.size || pendingMetadata) scheduleFrame();
+            if (pageChanged || viewerChanged || pendingPosts.size || links.hasPendingWork() || pendingMetadata) scheduleFrame();
             if (!pageChanged && !viewerChanged && pendingPosts.size && beforePaintWork < beforePaintBudget
                 && actions.isCurrentPage()) {
                 // X 在滚动中挂载卡片时，先在本次绘制前补齐少量卡片。其耗时计入同一帧的预算。
@@ -191,7 +174,8 @@
             attributeFilter: ['data-testid', 'lang', 'href', 'title', 'aria-label', 'data-expanded-url']
         });
         window.navigation?.addEventListener('navigatesuccess', () => {
-            pageChanged = refreshAllLinks = true;
+            pageChanged = true;
+            links.queueUnresolved();
             scheduleFrame();
         });
         scheduleFrame();
