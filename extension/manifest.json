@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Make X Great Again",
-  "version": "0.5.1",
-  "description": "在 X 时间线上查看作者的关注数，快速关注、取关、屏蔽或标记不感兴趣。",
+  "version": "0.6",
+  "description": "在 X 网页版使用 Grok 翻译，复制帖子全文和文章 Markdown（含图片与视频），跳过 t.co 直开外链，快速关注、取关和屏蔽。",
   "minimum_chrome_version": "111",
   "icons": {
     "16": "icons/mxga-16.png",
