@@ -3,7 +3,7 @@
 
     const modules = window.__mxgaBootstrap;
 
-    modules.createDirectLinks = () => {
+    modules.directLinks = (() => {
         const postLinkSelector = ':is([data-testid="tweetText"], [data-testid="twitterArticleRichTextView"], '
             + '[data-testid="primaryColumn"]) a[href]';
         const shortLinkSelector = postLinkSelector + ':is([href^="https://t.co/"], [href^="http://t.co/"])';
@@ -74,19 +74,98 @@
             return changed;
         }
 
+        function resolveShortLink(short, link) {
+            const known = linkDestinations.get(short.pathname);
+            if (known || !link) return known;
+
+            const candidates = [link.getAttribute('data-expanded-url'), link.title, link.getAttribute('aria-label')];
+            return candidates.map(readWebUrl).find(url => url && url.hostname !== 't.co')?.href;
+        }
+
         /** 原地更新 X 的短链接，供浏览器导航和复制链接使用。 */
         function rewritePostLink(link) {
             const short = readWebUrl(link.href);
             if (short?.hostname !== 't.co') return rewrittenLinks.get(link) === link.href;
 
-            const candidates = [link.getAttribute('data-expanded-url'), link.title, link.getAttribute('aria-label')];
-            const target = candidates.map(readWebUrl).find(url => url && url.hostname !== 't.co');
-            const destination = linkDestinations.get(short.pathname) ?? target?.href;
+            const destination = resolveShortLink(short, link);
             if (!destination) return false;
 
             link.href = destination;
             rewrittenLinks.set(link, link.href);
             return true;
+        }
+
+        /** 折叠正文使用与点击相同的短链映射。 */
+        function expandCopyLinks(text, entries) {
+            if (!text) return text;
+            rememberLinkEntities(entries, text);
+            return text.replace(/https?:\/\/t\.co\/[a-z\d]+/gi, short => resolveShortLink(readWebUrl(short)) ?? short);
+        }
+
+        function resolveLinkUrl(link) {
+            const url = readWebUrl(link.href);
+            const destination = url?.hostname === 't.co' ? resolveShortLink(url, link) : undefined;
+            return destination ? new URL(destination) : url;
+        }
+
+        function copyLinkText(link) {
+            const url = resolveLinkUrl(link);
+            if (!url || url.hostname === 't.co' || url.origin === location.origin) return;
+            const destination = url.href;
+
+            const displayText = link.innerText;
+            const label = displayText.trim();
+            const shown = label.replace(/\s/g, '').replace(/(?:…|\.{3})$/, '');
+            const address = destination.replace(/^https?:\/\//i, '');
+            const isAddress = /^(?:https?:\/\/|www\.)/i.test(shown) || (shown.includes('.') && address.startsWith(shown));
+            const text = !shown || isAddress ? destination : label + ' (' + destination + ')';
+            return label ? displayText.replace(label, () => text) : text;
+        }
+
+        /** 只复制文字和排版，不克隆媒体或站点组件。 */
+        function appendCopyText(node, target, replacements) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                target.append(node.data);
+                return;
+            }
+            if (!(node instanceof HTMLElement)) return;
+            const { display, visibility, whiteSpace, textTransform } = getComputedStyle(node);
+            if (display === 'none' || visibility === 'hidden') return;
+
+            const tag = /^(?:br|p|tr|td|th)$/.test(node.localName) ? node.localName : 'span';
+            const line = document.createElement(tag);
+            Object.assign(line.style, { display, whiteSpace, textTransform });
+            if (replacements.has(node)) {
+                line.style.textTransform = 'none';
+                line.textContent = replacements.get(node);
+            } else {
+                for (const child of node.childNodes) appendCopyText(child, line, replacements);
+            }
+            target.append(line);
+        }
+
+        /** 在复制时补全外链，保留正文顺序和段落。 */
+        function readCopyText(body) {
+            if (!body) return;
+            const replacements = new Map();
+            for (const link of body.querySelectorAll('a[href]')) {
+                const text = copyLinkText(link);
+                if (text !== undefined) replacements.set(link, text);
+            }
+            if (!replacements.size) return expandCopyLinks(body.innerText.trim());
+
+            const surface = document.createElement('div');
+            surface.style.cssText = 'position:fixed;left:-10000px;top:0;opacity:0;pointer-events:none';
+            surface.setAttribute('aria-hidden', 'true');
+            const { whiteSpace, textTransform } = getComputedStyle(body);
+            Object.assign(surface.style, { whiteSpace, textTransform });
+            for (const child of body.childNodes) appendCopyText(child, surface, replacements);
+            document.body.append(surface);
+            try {
+                return expandCopyLinks(surface.innerText.trim());
+            } finally {
+                surface.remove();
+            }
         }
 
         /** 在 X 的点击处理器之前改写地址，由浏览器执行链接的默认动作。 */
@@ -109,6 +188,6 @@
             for (const link of root.querySelectorAll(shortLinkSelector)) rewritePostLink(link);
         }
 
-        return { rememberPostLinks, rewritePostLink, openPostLink, matchesShortLink, containsShortLink, refresh };
-    };
+        return { rememberPostLinks, openPostLink, matchesShortLink, containsShortLink, refresh, readCopyText, expandCopyLinks, resolveLinkUrl };
+    })();
 })();

@@ -4,9 +4,9 @@
     const modules = window.__mxgaBootstrap;
     delete window.__mxgaBootstrap;
     const actions = modules.createPostActions(queuePost);
-    const links = modules.createDirectLinks();
+    const links = modules.directLinks;
     const translation = modules.createNativeTranslation(actions);
-    const extensionUiSelector = '.mxga-action-row, .mxga-article-metadata';
+    const extensionUiSelector = '.mxga-action-row, .mxga-article-metadata, .mxga-card-copy-inline';
     const primarySelector = '[data-testid="primaryColumn"]';
     const articleSelector = '[data-testid="twitterArticleReadView"]';
     const articleTitleSelector = '[data-testid="twitter-article-title"]';
@@ -14,7 +14,7 @@
     const authorSelector = '[data-testid="User-Name"]';
     const textSelector = '[data-testid="tweetText"]';
     const analyticsSelector = 'a[href$="/analytics"]';
-    const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', 'time', articleSelector,
+    const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', actions.grokSelector, 'time', articleSelector,
         articleTitleSelector, analyticsSelector].join(', ');
     const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
@@ -106,6 +106,7 @@
     function onPosts(posts) {
         for (const user of posts.authors) refreshAuthor(actions.rememberPostAuthor(user));
         actions.rememberReplies(posts.replyParents);
+        modules.rememberNoteTexts(posts.noteTexts);
         if (links.rememberPostLinks(posts)) {
             refreshAllLinks = true;
             scheduleFrame();
@@ -124,7 +125,8 @@
             }
         } else if (attributeName === 'href' && target.matches(actions.viewerSelector)) {
             viewerChanged = true;
-        } else if ((attributeName === 'lang' && target.matches(textSelector)) || (attributeName === 'href'
+        } else if ((attributeName === 'lang' && target.matches(textSelector))
+            || (attributeName === 'aria-label' && target.matches(actions.grokSelector)) || (attributeName === 'href'
             && target.matches('a') && (target.matches(analyticsSelector) || target.querySelector('time')
                 || target.closest(authorSelector)))) {
             const post = target.closest(actions.tweetSelector);

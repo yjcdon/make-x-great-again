@@ -3,41 +3,7 @@
 
     const modules = window.__mxgaBootstrap;
     const titleSelector = '[data-testid="twitter-article-title"]';
-    const bodySelector = '[data-testid="twitterArticleRichTextView"]';
     const mounts = new WeakMap();
-
-    /** 点击时读取当前文章的标题和正文，并把纯文本写入剪贴板。 */
-    function createCopyButton(article) {
-        const label = '复制全文';
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'mxga-copy-article';
-        button.lang = 'zh-CN';
-        button.textContent = label;
-        button.setAttribute('aria-live', 'polite');
-        let resetLabel;
-
-        button.addEventListener('click', async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            clearTimeout(resetLabel);
-            try {
-                const body = article.querySelector(bodySelector)?.innerText.trim();
-                if (!body) {
-                    button.textContent = '正文加载中';
-                    return;
-                }
-                const title = article.querySelector(titleSelector).innerText.trim();
-                await navigator.clipboard.writeText(title + '\n\n' + body);
-                button.textContent = '已复制';
-            } catch {
-                button.textContent = '复制失败';
-            } finally {
-                resetLabel = setTimeout(() => { button.textContent = label; }, 2000);
-            }
-        });
-        return button;
-    }
 
     function findPost(time) {
         const key = Object.keys(time).find(name => name.startsWith('__reactFiber$'));
@@ -58,18 +24,10 @@
         }
     }
 
-    /** 在文章标题下显示复制操作，并在原帖信息可用时复用时间和查看次数。 */
+    /** 在文章标题下复用原帖的发布时间和查看次数。 */
     modules.refreshArticleMetadata = article => {
         const title = article?.querySelector(titleSelector);
-        if (!title) return;
-        let row = title.nextElementSibling;
-        if (!row?.matches('.mxga-article-metadata')) {
-            row = document.createElement('div');
-            row.className = 'mxga-article-metadata';
-            row.append(createCopyButton(article));
-            title.after(row);
-        }
-        if (row.firstElementChild.matches('.mxga-article-stats')) return;
+        if (!title || title.nextElementSibling?.matches('.mxga-article-metadata')) return;
 
         const time = article.nextElementSibling?.querySelector('a > time');
         if (!time) return;
@@ -78,7 +36,7 @@
         let mount = mounts.get(post);
         if (!mount) {
             mount = document.createElement('div');
-            mount.className = 'mxga-article-stats';
+            mount.className = 'mxga-article-metadata mxga-article-stats';
             mounts.set(post, mount);
 
             const renderFocalContent = post._renderFocalContent;
@@ -99,7 +57,7 @@
                 return { ...content, props: { ...content.props, children: [...content.props.children, portal] } };
             };
         }
-        row.prepend(mount);
+        title.after(mount);
         post.forceUpdate();
     };
 })();

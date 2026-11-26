@@ -8,6 +8,7 @@
         const postScopeSelector = tweetSelector + ', [data-testid="quoteTweet"]';
         const authorSelector = '[data-testid="User-Name"]';
         const caretSelector = 'button[data-testid="caret"]';
+        const grokSelector = 'button[aria-label*="Grok" i]';
         const profilePath = /^\/([\w]+)\/?$/;
         const postPath = /^\/([\w]+)\/status\/(\d+)$/;
         const discussionPath = /^\/(?:[\w]+|i\/web)\/status\/(\d+)\/?$/;
@@ -210,7 +211,7 @@
             return button;
         }
 
-        function createActionRow(article, post, feedbackLabel) {
+        function createActionRow(article, post, feedbackLabel, showCopy, articleView) {
             const row = document.createElement('div');
             row.className = 'mxga-action-row';
             const authorActions = document.createElement('div');
@@ -221,6 +222,14 @@
             const follow = addButton(article, post, 'follow');
             const block = addButton(article, post, 'block', '屏蔽 @' + post.handle);
             const feedback = feedbackLabel ? addButton(article, post, 'feedback', feedbackLabel) : null;
+            let copy = null;
+            if (articleView) {
+                copy = modules.createArticleCopyButton(articleView);
+            } else if (showCopy) {
+                copy = modules.createCardCopyButton(article, () => {
+                    if (article.isConnected && readPostIdentity(article)?.id === post.id) return post.id;
+                });
+            }
             const counts = document.createElement('span');
             counts.className = 'mxga-counts';
             counts.lang = 'zh-CN';
@@ -229,7 +238,25 @@
             if (feedback) icons.append(feedback);
             row.append(authorActions, icons);
             post.header.after(row);
-            return { ...post, row, authorActions, follow, block, feedback, counts };
+            return { ...post, row, authorActions, icons, follow, block, feedback, copy, counts, articleView };
+        }
+
+        /** 在原生标题栏或快捷操作行放置同一个复制按钮。 */
+        function placeCopy(entry, inline) {
+            const { copy, icons, author, caret, header, feedback } = entry;
+            if (!copy) return;
+            copy.classList.toggle('mxga-card-copy-inline', inline);
+            if (!inline) {
+                if (copy.parentElement === icons) return;
+                if (feedback) icons.prepend(copy);
+                else icons.append(copy);
+            } else if (!caret) {
+                if (author.nextElementSibling !== copy) author.after(copy);
+            } else {
+                let anchor = header.querySelector(grokSelector) ?? caret;
+                while (!anchor.parentElement.contains(caret)) anchor = anchor.parentElement;
+                if (anchor.previousElementSibling !== copy) anchor.before(copy);
+            }
         }
 
         function updateAuthorActions(entry, state) {
@@ -299,6 +326,7 @@
         function removeActionRow(article) {
             const entry = cards.get(article);
             if (!entry) return;
+            entry.copy?.remove();
             entry.row.remove();
             cards.delete(article);
             const authorPosts = authorCards.get(entry.handle);
@@ -354,31 +382,39 @@
             else context.waiting.delete(article);
 
             const post = identity ? readPost(article, identity) : null;
-            const show = availablePost(context, article, post, reply);
-            const feedbackLabel = show ? readFeedbackLabel(post.caret) : undefined;
+            const showAuthor = availablePost(context, article, post, reply);
+            const ownPost = Boolean(post && post.handle === context.viewer);
+            const feedbackLabel = showAuthor ? readFeedbackLabel(post.caret) : undefined;
+            const main = article === context.main;
+            const articleView = main ? article.querySelector('[data-testid="twitterArticleReadView"]') : null;
+            const showCopy = Boolean(post && (articleView || modules.hasOrdinaryPostBody(article)));
+            const show = showAuthor || showCopy;
             let entry = cards.get(article);
             if (entry && (!show || entry.id !== post.id || entry.author !== post.author
                 || entry.caret !== post.caret || entry.header !== post.header
+                || Boolean(entry.copy) !== showCopy || entry.articleView !== articleView
                 || entry.feedback?.getAttribute('aria-label') !== feedbackLabel || !entry.row.isConnected)) {
                 removeActionRow(article);
                 entry = null;
             }
             if (show) {
                 if (!entry) {
-                    entry = createActionRow(article, post, feedbackLabel);
+                    entry = createActionRow(article, post, feedbackLabel, showCopy, articleView);
                     cards.set(article, entry);
                     if (!authorCards.has(post.handle)) authorCards.set(post.handle, new Set());
                     authorCards.get(post.handle).add(article);
                 }
-                updateAuthorActions(entry, relationships.get(post.handle));
-                entry.block.hidden = Boolean(entry.blockUnavailable);
-                entry.row.hidden = entry.authorActions.hidden && entry.block.hidden && !entry.feedback;
+                updateAuthorActions(entry, showAuthor ? relationships.get(post.handle) : undefined);
+                placeCopy(entry, !articleView && ownPost);
+                entry.block.hidden = !showAuthor || Boolean(entry.blockUnavailable);
+                entry.icons.hidden = entry.block.hidden && !entry.feedback && !entry.icons.contains(entry.copy);
+                entry.row.hidden = entry.authorActions.hidden && entry.icons.hidden;
             }
-            return article === context.main;
+            return main;
         }
 
         return {
-            tweetSelector, viewerSelector, rememberPostAuthor, rememberRelationship, rememberReplies,
+            tweetSelector, viewerSelector, grokSelector, rememberPostAuthor, rememberRelationship, rememberReplies,
             refreshAuthor, updatePage, refreshPost, removePost,
             canTranslate: article => context?.path === location.pathname
                 && context.root.contains(article) && (!context.discussionId || context.replyCards.has(article)),

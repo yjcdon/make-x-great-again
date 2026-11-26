@@ -6,7 +6,7 @@
     const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|SearchTimeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|Bookmarks|Likes|ListLatestTweetsTimeline|CommunitiesExploreTimeline|CommunityTweetsTimeline|UserTweets(?:AndReplies)?|UserArticlesTweets|UserMedia|User(?:Originals|Replies|Reposts|Video)Timeline)$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
 
-    /** 从帖子响应一次提取作者、链接和回复关系。 */
+    /** 从帖子响应一次提取作者、链接、回复关系和长帖正文。 */
     function readPostData(data) {
         const profile = data?.user?.result;
         const conversation = data?.threaded_conversation_with_injections_v2 ?? data?.threaded_conversation_with_injections;
@@ -24,11 +24,14 @@
         const links = new Map();
         const cards = [];
         const replyParents = new Map();
+        const noteTexts = new Map();
         const nodes = [root];
         while (nodes.length) {
             const node = nodes.pop();
             if (!node || typeof node !== 'object') continue;
             if (node.user_results?.result) authors.add(node.user_results.result);
+            const noteText = node.note_tweet?.note_tweet_results?.result?.text;
+            if (typeof noteText === 'string' && typeof node.rest_id === 'string') noteTexts.set(node.rest_id, noteText);
             const parentId = conversation && node.legacy?.in_reply_to_status_id_str;
             if (typeof parentId === 'string' && typeof node.rest_id === 'string') replyParents.set(node.rest_id, parentId);
             if (node.card?.legacy) cards.push(node.card);
@@ -39,7 +42,7 @@
                 if (value && typeof value === 'object') nodes.push(value);
             }
         }
-        return { authors, links, cards, replyParents };
+        return { authors, links, cards, replyParents, noteTexts };
     }
 
     /** 观察 X 已发出的请求，共用同一份解析后的响应，并保留原始请求行为。 */
