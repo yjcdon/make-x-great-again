@@ -2,9 +2,10 @@
     'use strict';
 
     const modules = window.__mxgaBootstrap;
-    const { readCopyText, expandCopyLinks } = modules.directLinks;
+    const { readCopyText, expandCopyLinks, resolveLinkUrl } = modules.directLinks;
     const postBodySelector = '[data-testid="tweetText"]';
     const showMoreSelector = '[data-testid="tweet-text-show-more-link"]';
+    const previewLinkSelector = '[data-testid="card.wrapper"] a[href]';
     const maxNoteTexts = 128;
     const noteTexts = new Map();
     const copyIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
@@ -45,6 +46,7 @@
     }
 
     modules.createCopyButton = createCopyButton;
+    modules.previewLinkSelector = previewLinkSelector;
 
     function ownPostElement(post, selector) {
         const element = post.querySelector(selector);
@@ -52,8 +54,13 @@
         return quote && quote !== post && post.contains(quote) ? null : element;
     }
 
-    modules.hasOrdinaryPostBody = post => !post.querySelector('[data-testid="twitterArticleReadView"]')
-        && Boolean(ownPostElement(post, postBodySelector));
+    function ownPreviewLink(post) {
+        const link = ownPostElement(post, previewLinkSelector);
+        return link && link.origin !== location.origin ? link : null;
+    }
+
+    modules.hasOrdinaryPostContent = post => !post.querySelector('[data-testid="twitterArticleReadView"]')
+        && Boolean(ownPostElement(post, postBodySelector) || ownPreviewLink(post));
 
     /** 仅在标签页内存保留最近收到的长帖正文，供折叠卡片复制。 */
     modules.rememberNoteTexts = texts => {
@@ -74,13 +81,7 @@
     }
 
     /** 复制当前显示的语言，折叠时从 X 已加载的数据取该版本全文。 */
-    modules.createCardCopyButton = (post, readId) => createCopyButton('mxga-card-copy', () => {
-        const id = readId();
-        const body = ownPostElement(post, postBodySelector);
-        if (!id || !body) return;
-        if (!ownPostElement(post, showMoreSelector)) return readCopyText(body);
-
-        const tweet = findTweet(body, id);
+    function readFoldedText(body, id, tweet) {
         const translated = tweet?.grok_translated_post;
         const noteLinks = tweet?.note_tweet?.entity_set?.urls;
         if (body.lang && translated?.destination_language === body.lang) {
@@ -93,5 +94,22 @@
         if (tweet || (visibleText && note?.startsWith(visibleText))) {
             return expandCopyLinks(note, noteLinks);
         }
+    }
+
+    modules.createCardCopyButton = (post, readId) => createCopyButton('mxga-card-copy', () => {
+        const id = readId();
+        if (!id) return;
+        const body = ownPostElement(post, postBodySelector);
+        const folded = body && ownPostElement(post, showMoreSelector);
+        const tweet = folded && findTweet(body, id);
+        let text = '';
+        if (body) text = folded ? readFoldedText(body, id, tweet) : readCopyText(body);
+        if (text === undefined) return;
+
+        const preview = ownPreviewLink(post);
+        const destination = preview && resolveLinkUrl(preview);
+        const previewUrl = destination && destination.origin !== location.origin && !text.includes(destination.href)
+            ? destination.href : '';
+        return [text, previewUrl].filter(Boolean).join('\n\n');
     });
 })();

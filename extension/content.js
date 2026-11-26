@@ -15,8 +15,9 @@
     const textSelector = '[data-testid="tweetText"]';
     const analyticsSelector = 'a[href$="/analytics"]';
     const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', actions.grokSelector, 'time', articleSelector,
-        articleTitleSelector, analyticsSelector].join(', ');
-    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView', 'twitter-article-title']);
+        articleTitleSelector, analyticsSelector, modules.previewLinkSelector].join(', ');
+    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'card.wrapper', 'caret',
+        'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
     const pendingPosts = new Set();
     const frameBudget = 4;
@@ -107,8 +108,8 @@
             viewerChanged = true;
         } else if ((attributeName === 'lang' && target.matches(textSelector))
             || (attributeName === 'aria-label' && target.matches(actions.grokSelector)) || (attributeName === 'href'
-            && target.matches('a') && (target.matches(analyticsSelector) || target.querySelector('time')
-                || target.closest(authorSelector)))) {
+            && target.matches('a') && (target.matches(analyticsSelector) || target.matches(modules.previewLinkSelector)
+                || target.querySelector('time') || target.closest(authorSelector)))) {
             const post = target.closest(actions.tweetSelector);
             if (post && primary?.contains(post)) pendingPosts.add(post);
         }
