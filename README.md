@@ -2,13 +2,17 @@
 
 Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。用 Grok 翻译帖子和回复，复制帖子全文与文章 Markdown，跳过 `t.co` 直开外链。也可以直接在帖子旁关注、取关或屏蔽作者。
 
-[下载最新版 Chrome 扩展 ZIP](https://github.com/yjcdon/make-x-great-again/releases/latest) · [更新日志](CHANGELOG.md)
+[从 Chrome 应用商店安装](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) · [从 GitHub 下载 ZIP](https://github.com/yjcdon/make-x-great-again/releases/latest) · [更新日志](CHANGELOG.md)
 
 ## 安装
 
 需要 Chrome 111 或以上版本。
 
-1. 在下载页的 **Assets** 中下载 `make-x-great-again-v*.zip` 并解压。
+在 [Chrome 应用商店](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) 点击「添加至 Chrome」。扩展版本以商店详情页为准。
+
+### 手动安装 GitHub 版本
+
+1. 在 [GitHub Release](https://github.com/yjcdon/make-x-great-again/releases/latest) 的 **Assets** 中下载 `make-x-great-again-v*.zip` 并解压。
 2. 打开 `chrome://extensions`，开启「开发者模式」。
 3. 点击「加载已解压的扩展程序」，选择包含 `manifest.json` 的文件夹。
 4. 登录 `x.com`，刷新已打开的 X 网页。
