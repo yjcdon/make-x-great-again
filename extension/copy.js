@@ -5,6 +5,7 @@
     const { readCopyText, expandCopyLinks, resolveLinkUrl } = modules.directLinks;
     const postBodySelector = '[data-testid="tweetText"]';
     const showMoreSelector = '[data-testid="tweet-text-show-more-link"]';
+    const photoImageSelector = '[data-testid="tweetPhoto"] img';
     const previewLinkSelector = '[data-testid="card.wrapper"] a[href]';
     const maxNoteTexts = 128;
     const noteTexts = new Map();
@@ -12,11 +13,11 @@
     const copiedIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
     /** 点击时读取当前内容，并把纯文本写入剪贴板。 */
-    function createCopyButton(className, readText) {
+    function createCopyButton(readText) {
         const label = '复制全文';
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'mxga-icon ' + className;
+        button.className = 'mxga-icon mxga-card-copy';
         button.lang = 'zh-CN';
         button.setAttribute('aria-live', 'polite');
         let resetLabel;
@@ -31,9 +32,10 @@
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             event.stopPropagation();
+
+            const text = readText();
+            if (!text) return;
             try {
-                const text = readText();
-                if (!text) return;
                 await navigator.clipboard.writeText(text);
             } catch {
                 return;
@@ -46,7 +48,26 @@
     }
 
     modules.createCopyButton = createCopyButton;
+    modules.photoImageSelector = photoImageSelector;
     modules.previewLinkSelector = previewLinkSelector;
+
+    function escapeText(text) {
+        return text.replace(/[\\\x60*_[\]<>~#|]/g, '\\$&')
+            .replace(/^([ \t]*(?:\d{1,9})?)([+.)-])(?=\s)/gm, '$1\\$2');
+    }
+
+    function markdownLink(label, url) {
+        return '[' + label + '](' + url.replace(/[\\()]/g, '\\$&') + ')';
+    }
+
+    /** 帖子和文章都用 X 已渲染的图片地址生成 Markdown。 */
+    function readPhotoMarkdown(image) {
+        const url = image.currentSrc || image.src;
+        if (!url.startsWith('https://pbs.twimg.com/media/')) return '';
+        const alt = image.alt.trim();
+        const label = /^(?:image|图像|圖像)?$/i.test(alt) ? 'picture' : alt;
+        return '!' + markdownLink(escapeText(label), url);
+    }
 
     function ownPostElement(post, selector) {
         const element = post.querySelector(selector);
@@ -54,13 +75,18 @@
         return quote && quote !== post && post.contains(quote) ? null : element;
     }
 
+    function postPhotoSelector(id) {
+        return `a[href*="/status/${id}/photo/"] ${photoImageSelector}`;
+    }
+
     function ownPreviewLink(post) {
         const link = ownPostElement(post, previewLinkSelector);
         return link && link.origin !== location.origin ? link : null;
     }
 
-    modules.hasOrdinaryPostContent = post => !post.querySelector('[data-testid="twitterArticleReadView"]')
-        && Boolean(ownPostElement(post, postBodySelector) || ownPreviewLink(post));
+    modules.hasOrdinaryPostContent = (post, id) => !post.querySelector('[data-testid="twitterArticleReadView"]')
+        && Boolean(ownPostElement(post, postBodySelector) || post.querySelector(postPhotoSelector(id))
+            || ownPreviewLink(post));
 
     /** 仅在标签页内存保留最近收到的长帖正文，供折叠卡片复制。 */
     modules.rememberNoteTexts = texts => {
@@ -96,7 +122,9 @@
         }
     }
 
-    modules.createCardCopyButton = (post, readId) => createCopyButton('mxga-card-copy', () => {
+    modules.markdown = { escapeText, markdownLink, readPhotoMarkdown };
+
+    modules.createCardCopyButton = (post, readId) => createCopyButton(() => {
         const id = readId();
         if (!id) return;
         const body = ownPostElement(post, postBodySelector);
@@ -110,6 +138,7 @@
         const destination = preview && resolveLinkUrl(preview);
         const previewUrl = destination && destination.origin !== location.origin && !text.includes(destination.href)
             ? destination.href : '';
-        return [text, previewUrl].filter(Boolean).join('\n\n');
+        const photos = new Set(Array.from(post.querySelectorAll(postPhotoSelector(id)), readPhotoMarkdown));
+        return [text, previewUrl, ...photos].filter(Boolean).join('\n\n');
     });
 })();

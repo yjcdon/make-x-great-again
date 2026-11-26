@@ -3,21 +3,14 @@
 
     const modules = window.__mxgaBootstrap;
     const { resolveLinkUrl } = modules.directLinks;
+    const { photoImageSelector } = modules;
+    const { escapeText, markdownLink, readPhotoMarkdown } = modules.markdown;
     const headingSelector = 'h1, h2, h3, h4, h5, h6';
     const blockSelector = '[data-block="true"], ' + headingSelector + ', p, ul, ol, pre, blockquote, hr';
-
-    function escapeText(text) {
-        return text.replace(/[\\\x60*_[\]<>~#|]/g, '\\$&')
-            .replace(/^([ \t]*(?:\d{1,9})?)([+.)-])(?=\s)/gm, '$1\\$2');
-    }
 
     function wrapInline(text, format) {
         const content = text.trim();
         return content ? text.replace(content, () => format(content)) : text;
-    }
-
-    function markdownLink(label, url) {
-        return '[' + label + '](' + url.replace(/[\\()]/g, '\\$&') + ')';
     }
 
     function codeFence(text, minimum) {
@@ -88,7 +81,9 @@
             if (code) return readCodeBlock(code);
             const post = block.querySelector('a[href]:has(time)');
             const url = post && resolveLinkUrl(post)?.href;
-            return url ? markdownLink('引用的 X 帖子', url) : escapeText(block.innerText.trim());
+            if (url) return markdownLink('引用的 X 帖子', url);
+            const photos = Array.from(block.querySelectorAll(photoImageSelector), readPhotoMarkdown);
+            return [...photos, escapeText(block.innerText.trim())].filter(Boolean).join('\n\n');
         }
         if (tag === 'ul' || tag === 'ol') return readList(block);
         if (tag === 'hr') return '---';
@@ -101,17 +96,17 @@
     }
 
     /** 将 X 文章的正文结构和链接转换成剪贴板中的 Markdown。 */
-    function readArticleMarkdown(title, body) {
-        if (!body) return;
+    function readArticleMarkdown(article) {
+        const title = article.querySelector('[data-testid="twitter-article-title"]')?.innerText.trim();
+        const body = article.querySelector('[data-testid="twitterArticleRichTextView"]');
+        if (!title || !body) return;
         const root = body.querySelector('[data-contents="true"]') ?? body;
         const headings = Array.from(root.querySelectorAll(headingSelector), node => Number(node.localName[1]));
         const text = readBlock(root, 2 - Math.min(6, ...headings));
-        return text && '# ' + escapeText(title) + '\n\n' + text;
+        const firstPhoto = article.querySelector(photoImageSelector);
+        const cover = firstPhoto && !body.contains(firstPhoto) ? readPhotoMarkdown(firstPhoto) : '';
+        return (cover || text) && ['# ' + escapeText(title), cover, text].filter(Boolean).join('\n\n');
     }
 
-    /** 文章的复制操作从当前阅读视图读取标题和正文。 */
-    modules.createArticleCopyButton = article => modules.createCopyButton('mxga-card-copy', () => {
-        const title = article.querySelector('[data-testid="twitter-article-title"]')?.innerText.trim();
-        return title && readArticleMarkdown(title, article.querySelector('[data-testid="twitterArticleRichTextView"]'));
-    });
+    modules.createArticleCopyButton = article => modules.createCopyButton(() => readArticleMarkdown(article));
 })();

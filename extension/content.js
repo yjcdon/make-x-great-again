@@ -15,8 +15,8 @@
     const textSelector = '[data-testid="tweetText"]';
     const analyticsSelector = 'a[href$="/analytics"]';
     const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', actions.grokSelector, 'time', articleSelector,
-        articleTitleSelector, analyticsSelector, modules.previewLinkSelector].join(', ');
-    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'card.wrapper', 'caret',
+        articleTitleSelector, analyticsSelector, modules.photoImageSelector, modules.previewLinkSelector].join(', ');
+    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'tweetPhoto', 'card.wrapper', 'caret',
         'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
     const pendingPosts = new Set();

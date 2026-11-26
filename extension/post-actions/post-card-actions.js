@@ -387,7 +387,7 @@
             const feedbackLabel = showAuthor ? readFeedbackLabel(post.caret) : undefined;
             const main = article === context.main;
             const articleView = main ? article.querySelector('[data-testid="twitterArticleReadView"]') : null;
-            const showCopy = Boolean(post && (articleView || modules.hasOrdinaryPostContent(article)));
+            const showCopy = Boolean(post && (articleView || modules.hasOrdinaryPostContent(article, post.id)));
             const show = showAuthor || showCopy;
             let entry = cards.get(article);
             if (entry && (!show || entry.id !== post.id || entry.author !== post.author
