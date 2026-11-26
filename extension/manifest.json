@@ -13,8 +13,8 @@
   "content_scripts": [
     {
       "matches": ["https://x.com/*"],
-      "js": ["x-data.js", "native-menu.js", "direct-links.js", "post-card-actions.js", "native-translation.js", "article-metadata.js", "content.js"],
-      "css": ["post-card-actions.css"],
+      "js": ["x-data.js", "post-actions/native-menu.js", "direct-links.js", "post-actions/post-card-actions.js", "native-translation.js", "articles/article-metadata.js", "content.js"],
+      "css": ["content.css"],
       "run_at": "document_start",
       "world": "MAIN"
     }

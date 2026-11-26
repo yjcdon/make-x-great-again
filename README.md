@@ -26,3 +26,5 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 4. 登录 `x.com`，刷新已打开的 X 网页。
 
 从源码安装时，在第 3 步选择仓库里的 [`extension/`](extension/) 文件夹。
+
+`content.js` 负责页面接入，`post-actions/` 放作者操作和原生菜单，`articles/` 放文章信息与 Markdown 转换。共用的外链解析和 X 数据读取位于扩展根目录。
