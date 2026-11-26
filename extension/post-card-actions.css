@@ -1,4 +1,5 @@
 .mxga-follow,
+.mxga-copy-article,
 .mxga-icon {
     appearance: none;
     box-sizing: border-box;
@@ -84,9 +85,36 @@
 }
 
 .mxga-follow:focus-visible,
+.mxga-copy-article:focus-visible,
 .mxga-icon:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: 2px;
+}
+
+.mxga-article-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-block-start: 8px;
+}
+
+.mxga-article-stats {
+    min-inline-size: 0;
+}
+
+.mxga-copy-article {
+    flex-shrink: 0;
+    margin-inline-start: auto;
+    padding: 3px 0 3px 8px;
+    color: color-mix(in srgb, currentColor 72%, transparent);
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.mxga-copy-article:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 /* 只在查找原生操作时隐藏下拉内容。 */

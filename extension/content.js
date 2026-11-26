@@ -9,11 +9,13 @@
     const extensionUiSelector = '.mxga-action-row, .mxga-article-metadata';
     const primarySelector = '[data-testid="primaryColumn"]';
     const articleSelector = '[data-testid="twitterArticleReadView"]';
+    const articleTitleSelector = '[data-testid="twitter-article-title"]';
     const articleFooterSelector = articleSelector + ' + *';
     const authorSelector = '[data-testid="User-Name"]';
     const textSelector = '[data-testid="tweetText"]';
-    const postPartSelector = authorSelector + ', ' + textSelector + ', button[data-testid="caret"], time, ' + articleSelector;
-    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView']);
+    const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', 'time', articleSelector,
+        articleTitleSelector].join(', ');
+    const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
     const pendingPosts = new Set();
     const linkRoots = new Set();
