@@ -11,9 +11,24 @@
             follow: /^(?:关注|關注|跟隨|Follow)\s+@([\w]+)$/i,
             unfollow: /^(?:取消关注|取消關注|取消跟隨|Unfollow)\s+@([\w]+)$/i,
             block: /^(?:屏蔽|封鎖|Block)\s+@([\w]+)$/i,
-            feedback: /^(?:这个帖子没有帮助|对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|Show less often)$/i
+            feedback: /^(?:这个帖子没有帮助|对此帖子不感兴趣|對此貼文不感興趣|對此帖子不感興趣|Not interested in this post|This post isn['’]t helpful|Show less often)$/i
         };
         let openingMenu = false;
+
+        /** 读取三点菜单组件已持有的帖子和菜单数据。 */
+        function readMenuProps(caret) {
+            const key = Object.keys(caret).find(name => name.startsWith('__reactFiber$'));
+            for (let fiber = caret[key]; fiber; fiber = fiber.return) {
+                const component = fiber.stateNode;
+                if (typeof component?._getLeaveBehindMenuActions === 'function') return component.props;
+            }
+        }
+
+        /** 读取当前帖子原生菜单的反馈选项，渲染快捷入口时不展开菜单。 */
+        function readFeedbackLabel(caret) {
+            return readMenuProps(caret)?.feedbackItems?.find(item => !item.excludeFromActionMenu
+                && typeof item.text === 'string' && menuLabels.feedback.test(item.text.trim()))?.text.trim();
+        }
 
         function visibleMenus() {
             return [...document.querySelectorAll(dropdownSelector)].filter(menu => menu.getClientRects().length > 0);
@@ -128,6 +143,6 @@
             }
         }
 
-        return { invoke };
+        return { invoke, readFeedbackLabel };
     };
 })();

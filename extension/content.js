@@ -13,8 +13,9 @@
     const articleFooterSelector = articleSelector + ' + *';
     const authorSelector = '[data-testid="User-Name"]';
     const textSelector = '[data-testid="tweetText"]';
+    const analyticsSelector = 'a[href$="/analytics"]';
     const postPartSelector = [authorSelector, textSelector, 'button[data-testid="caret"]', 'time', articleSelector,
-        articleTitleSelector].join(', ');
+        articleTitleSelector, analyticsSelector].join(', ');
     const postTestIds = new Set(['tweet', 'User-Name', 'tweetText', 'caret', 'twitterArticleReadView', 'twitter-article-title']);
     const scopeSelector = primarySelector + ', ' + actions.viewerSelector;
     const pendingPosts = new Set();
@@ -124,7 +125,8 @@
         } else if (attributeName === 'href' && target.matches(actions.viewerSelector)) {
             viewerChanged = true;
         } else if ((attributeName === 'lang' && target.matches(textSelector)) || (attributeName === 'href'
-            && target.matches('a') && (target.querySelector('time') || target.closest(authorSelector)))) {
+            && target.matches('a') && (target.matches(analyticsSelector) || target.querySelector('time')
+                || target.closest(authorSelector)))) {
             const post = target.closest(actions.tweetSelector);
             if (post && primary?.contains(post)) pendingPosts.add(post);
         }

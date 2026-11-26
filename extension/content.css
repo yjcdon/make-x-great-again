@@ -21,6 +21,13 @@
     margin: 2px 0 3px;
 }
 
+[data-testid="User-Name"][data-mxga-inline-author] {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 4px;
+}
+
 .mxga-author-actions {
     min-width: 0;
     gap: 8px;

@@ -3,16 +3,20 @@
 
     const modules = window.__mxgaBootstrap = {};
 
-    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|SearchTimeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|UserTweets(?:AndReplies)?|User(?:Originals|Replies|Reposts)Timeline)$/;
+    const postDataPath = /^\/i\/api\/graphql\/[^/]+\/(?:Home(?:Latest)?Timeline|SearchTimeline|TweetDetail|TweetResultByRestId|ConversationTimelineV2|NotificationsTimeline|Bookmarks|Likes|ListLatestTweetsTimeline|CommunitiesExploreTimeline|CommunityTweetsTimeline|UserTweets(?:AndReplies)?|UserArticlesTweets|UserMedia|User(?:Originals|Replies|Reposts|Video)Timeline)$/;
     const relationshipPath = /^\/i\/api\/1\.1\/friendships\/(?:create|destroy)\.json$/;
 
-    /** 提取帖子响应中作者与链接所需的字段，共用一次遍历。 */
+    /** 从帖子响应一次提取作者、链接和回复关系。 */
     function readPostData(data) {
         const profile = data?.user?.result;
         const conversation = data?.threaded_conversation_with_injections_v2 ?? data?.threaded_conversation_with_injections;
         const root = data?.home ?? data?.search_by_raw_query?.search_timeline?.timeline
             ?? conversation
             ?? data?.viewer_v2?.user_results?.result?.notification_timeline?.timeline
+            ?? data?.bookmark_timeline_v2?.timeline
+            ?? data?.list?.tweets_timeline?.timeline
+            ?? data?.viewer?.explore_communities_timeline?.timeline
+            ?? data?.communityResults?.result?.ranked_community_timeline?.timeline
             ?? profile?.timeline_v2?.timeline ?? profile?.timeline?.timeline ?? data?.tweetResult?.result;
         if (!root) return;
 
