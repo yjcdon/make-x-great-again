@@ -1,6 +1,6 @@
 # Make X Great Again
 
-Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在时间线和回复区使用 Grok 翻译，复制帖子全文与文章 Markdown，跳过 `t.co` 直开外链。也可以直接在帖子旁关注、取关或屏蔽作者。
+Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在时间线和评论区使用 Grok 翻译，复制帖子全文与文章 Markdown，跳过 `t.co` 直开外链。也可以直接在帖子旁关注、取关或屏蔽作者。
 
 [从 Chrome 应用商店安装](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) · [从 GitHub 下载 ZIP](https://github.com/yjcdon/make-x-great-again/releases/latest) · [更新日志](CHANGELOG.md)
 
@@ -21,9 +21,9 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 
 ## Grok 翻译
 
-在时间线、搜索结果等帖子列表，以及帖子和文章的回复区，扩展为 X 判定可翻译的内容补上原生「显示翻译」入口。点开即可在原位置看译文，随时切回原文。详情页主帖使用 X 自带的入口。
+在时间线、搜索结果等帖子列表，以及帖子和文章的评论区，扩展为 X 判定可翻译的内容补上原生「显示翻译」入口。点开即可在原位置看译文，随时切回原文。详情页主帖使用 X 自带的入口。
 
-![Grok 翻译功能图，展示同一条回复的原文和中文译文](docs/screenshots/01-grok-translation.jpg)
+![Grok 翻译功能图，上方是首页时间线的「显示翻译」，下方是文章评论区的中文译文](docs/screenshots/01-grok-translation.jpg)
 
 ## 复制帖子和文章
 
