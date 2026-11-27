@@ -1,14 +1,12 @@
 # <img src="extension/icons/mxga-128.png" width="32" height="32" alt=""> Make X Great Again
 
-Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在时间线和评论区使用 Grok 翻译，复制帖子全文与文章 Markdown，跳过 `t.co` 直开外链。也可以直接在帖子旁关注、取关或屏蔽作者。
+Make X Great Again（MXGA）是 X（Twitter）网页版的 Chrome 扩展。它为时间线和评论区补上 Grok 翻译入口，支持复制帖子全文、将 X 文章复制为 Markdown、直开外链，以及在帖子旁管理关注和屏蔽。
 
-[从 Chrome 应用商店安装](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) · [从 GitHub 下载 ZIP](https://github.com/yjcdon/make-x-great-again/releases/latest) · [更新日志](CHANGELOG.md)
+[从 Chrome 应用商店安装](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) · [从 GitHub 下载 ZIP](https://github.com/yjcdon/make-x-great-again/releases/latest) · [更新日志](CHANGELOG.md) · [版本复盘](docs/versions/README.md)
 
 ## 安装
 
-需要 Chrome 111 或以上版本。
-
-在 [Chrome 应用商店](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) 点击「添加至 Chrome」。扩展版本以商店详情页为准。
+需要 Chrome 111 或更高版本。在 [Chrome 应用商店](https://chromewebstore.google.com/detail/make-x-great-again/hhnjogcifjdjdpjkhfkbhiechbhecpdl) 点击「添加至 Chrome」，再登录 X 并刷新已打开的页面。
 
 ### 手动安装 GitHub 版本
 
@@ -36,7 +34,7 @@ Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome �
 
 ## 直开外链
 
-正文、个人简介、相关用户和悬浮资料卡里的外链，在 X 已提供完整网址时可以直接打开。
+X 已提供完整网址时，可以直接打开正文、个人简介、相关用户和悬浮资料卡里的外链，跳过 `t.co` 短链。
 
 ![直开外链功能图，展示 X 个人主页上的网站链接](docs/screenshots/03-direct-links.jpg)
 
