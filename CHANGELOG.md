@@ -1,5 +1,11 @@
 # 更新日志
 
+## 0.6.1 · 2026-11-27
+
+- 安装包采用红色 X、白色 M、G、A 图标，与 Chrome 应用商店和 GitHub 首页的图标一致。
+
+[与 0.6 比较](https://github.com/yjcdon/make-x-great-again/compare/v0.6...v0.6.1) · [下载 0.6.1](https://github.com/yjcdon/make-x-great-again/releases/tag/v0.6.1)
+
 ## 0.6 · 2026-11-26
 
 ### 复制帖子与文章

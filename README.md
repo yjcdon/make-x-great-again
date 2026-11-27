@@ -1,4 +1,4 @@
-# Make X Great Again
+# <img src="extension/icons/mxga-128.png" width="32" height="32" alt=""> Make X Great Again
 
 Make X Great Again（MXGA）是一款面向 X（Twitter）网页版的 Chrome 扩展。在时间线和评论区使用 Grok 翻译，复制帖子全文与文章 Markdown，跳过 `t.co` 直开外链。也可以直接在帖子旁关注、取关或屏蔽作者。
 
